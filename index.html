@@ -67,10 +67,10 @@
 
     <script type="module">
         // --- CDN Imports for Three.js and GLTFLoader ---
-        // The previous URLs caused a module resolution error. We've switched to a more
-        // reliable CDN format to ensure the GLTFLoader can find its 'three' dependency.
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
-        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+        // We've switched to the esm.sh CDN which correctly handles module dependencies
+        // and resolves the "Failed to resolve module specifier" error.
+        import * as THREE from 'https://esm.sh/three@0.165.0';
+        import { GLTFLoader } from 'https://esm.sh/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
         // --- End CDN Imports ---
 
         let scene, camera, renderer, avatar, mixer;
