@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chatbot Avatar</title>
+  <style>
+    body { margin: 0; background: #202020; overflow: hidden; }
+    #chat-bubble {
+      position: absolute;
+      bottom: 150px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      padding: 10px 15px;
+      border-radius: 15px;
+      max-width: 250px;
+      font-family: sans-serif;
+      display: none;
+      color: #333;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="chat-bubble">Hi there! 👋</div>
+
+  <script type="module">
+    // --- CDN Imports for Three.js and GLTFLoader ---
+    // Using unpkg.com as a common CDN for npm packages
+    import * as THREE from 'https://unpkg.com/three@0.165.0/build/three.module.js';
+    import { GLTFLoader } from 'https://unpkg.com/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+    // --- End CDN Imports ---
+
+    let scene, camera, renderer, avatar, mixer;
+    const clock = new THREE.Clock();
+
+    init();
+    animate();
+
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x202020);
+
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(0, 1.6, 3);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      document.body.appendChild(renderer.domElement);
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+      scene.add(ambientLight);
+
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(1, 2, 3).normalize();
+      scene.add(directionalLight);
+
+      const loader = new GLTFLoader();
+      loader.load('./chatbot_avatar.glb', (gltf) => {
+        avatar = gltf.scene;
+        scene.add(avatar);
+
+        const bbox = new THREE.Box3().setFromObject(avatar);
+        bbox.getCenter(avatar.position).multiplyScalar(-1);
+        avatar.position.y = 0;
+
+        mixer = new THREE.AnimationMixer(avatar);
+        if (gltf.animations.length > 0) {
+          const action = mixer.clipAction(gltf.animations[0]);
+          action.play();
+        }
+
+        showChatBubble("Hello! I'm your assistant.");
+      }, undefined, (error) => {
+        console.error('An error occurred while loading the GLTF model:', error);
+      });
+
+      window.addEventListener('resize', onWindowResize);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (mixer) mixer.update(clock.getDelta());
+      renderer.render(scene, camera);
+    }
+
+    function showChatBubble(text) {
+      const bubble = document.getElementById('chat-bubble');
+      bubble.innerText = text;
+      bubble.style.display = 'block';
+      setTimeout(() => {
+        bubble.style.display = 'none';
+      }, 3000);
+    }
+  </script>
+</body>
+</html>
