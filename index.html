@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-AVATAR Project</title>
+    <!--
+        This script loads the Tailwind CSS framework from a CDN.
+        It makes it easy to style your page with pre-defined classes.
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /*
+          We are using a Google Font called "Inter" for a clean, modern look.
+        */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+
+    <!--
+        This is the main container for our page content.
+        We're using flexbox to center the card on the screen and adding
+        responsive padding (p-4 for mobile, p-6 for larger screens).
+    -->
+    <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg w-full max-w-2xl text-center">
+
+        <!--
+            The heading for your page.
+        -->
+        <h1 class="text-4xl font-bold text-gray-800 mb-4">Welcome to AI-AVATAR!</h1>
+
+        <!--
+            A description of your project. You can change this text to
+            describe what your AI-AVATAR project is all about.
+        -->
+        <p class="text-gray-600 mb-6">
+            This is a simple starter page for your GitHub Pages project.
+            Feel free to edit this code and add your own content!
+        </p>
+
+        <!--
+            This is a button that will show a message when clicked.
+            The `id` attribute is used by the JavaScript below to find this element.
+        -->
+        <button id="alertButton" class="bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-md">
+            Click Me!
+        </button>
+
+    </div>
+
+    <!--
+        This is a modal or message box to replace the standard `alert()`.
+        It will be hidden by default and shown when the button is clicked.
+    -->
+    <div id="messageBox" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl text-center w-full max-w-sm">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Hello there!</h3>
+            <p class="text-gray-600 mb-6">You successfully clicked the button.</p>
+            <button id="closeButton" class="bg-gray-300 text-gray-800 py-2 px-4 rounded-lg font-bold hover:bg-gray-400 transition-colors duration-200">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <!--
+        This script tag contains the JavaScript for our page.
+        It adds functionality to the button and the message box.
+    -->
+    <script>
+        // Wait for the entire page to load before running the script.
+        window.onload = function() {
+            // Get the button, message box, and close button elements by their IDs.
+            const alertButton = document.getElementById('alertButton');
+            const messageBox = document.getElementById('messageBox');
+            const closeButton = document.getElementById('closeButton');
+
+            // Add an event listener to the main button.
+            // When it's clicked, we'll show the message box.
+            alertButton.addEventListener('click', () => {
+                messageBox.classList.remove('hidden');
+            });
+
+            // Add an event listener to the close button inside the message box.
+            // When it's clicked, we'll hide the message box.
+            closeButton.addEventListener('click', () => {
+                messageBox.classList.add('hidden');
+            });
+
+            // Also hide the message box if the user clicks outside of it.
+            messageBox.addEventListener('click', (event) => {
+                if (event.target === messageBox) {
+                    messageBox.classList.add('hidden');
+                }
+            });
+        };
+    </script>
+
+</body>
+</html>
