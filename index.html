@@ -3,101 +3,175 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-AVATAR Project</title>
+    <title>AI-AVATAR</title>
     <!--
-        This script loads the Tailwind CSS framework from a CDN.
-        It makes it easy to style your page with pre-defined classes.
+        We are using the Inter font for a clean, modern look.
+        The Tailwind CSS script provides easy-to-use utility classes for styling.
     -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /*
-          We are using a Google Font called "Inter" for a clean, modern look.
-        */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
         body {
             font-family: 'Inter', sans-serif;
+            margin: 0;
+            background: #111827;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+        #chat-bubble {
+            position: absolute;
+            bottom: 150px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 10px 15px;
+            border-radius: 15px;
+            max-width: 250px;
+            font-family: sans-serif;
+            display: none;
+            color: #333;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            text-align: center;
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+<body class="bg-gray-900 text-white relative">
+    
+    <!-- This div will contain our 3D canvas -->
+    <div id="canvas-container" class="fixed inset-0 z-0"></div>
 
-    <!--
-        This is the main container for our page content.
-        We're using flexbox to center the card on the screen and adding
-        responsive padding (p-4 for mobile, p-6 for larger screens).
-    -->
-    <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg w-full max-w-2xl text-center">
-
-        <!--
-            The heading for your page.
-        -->
-        <h1 class="text-4xl font-bold text-gray-800 mb-4">Welcome to AI-AVATAR!</h1>
-
-        <!--
-            A description of your project. You can change this text to
-            describe what your AI-AVATAR project is all about.
-        -->
-        <p class="text-gray-600 mb-6">
-            This is a simple starter page for your GitHub Pages project.
-            Feel free to edit this code and add your own content!
-        </p>
-
-        <!--
-            This is a button that will show a message when clicked.
-            The `id` attribute is used by the JavaScript below to find this element.
-        -->
-        <button id="alertButton" class="bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-md">
-            Click Me!
-        </button>
-
+    <!-- This is the loading screen overlay -->
+    <div id="loading-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 transition-opacity duration-500">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+        <p class="mt-4 text-gray-300">Loading 3D model...</p>
     </div>
 
-    <!--
-        This is a modal or message box to replace the standard `alert()`.
-        It will be hidden by default and shown when the button is clicked.
-    -->
-    <div id="messageBox" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white p-6 rounded-lg shadow-xl text-center w-full max-w-sm">
-            <h3 class="text-xl font-bold text-gray-800 mb-4">Hello there!</h3>
-            <p class="text-gray-600 mb-6">You successfully clicked the button.</p>
-            <button id="closeButton" class="bg-gray-300 text-gray-800 py-2 px-4 rounded-lg font-bold hover:bg-gray-400 transition-colors duration-200">
-                Close
+    <!-- This is the UI for the chat bubble and input -->
+    <div class="absolute bottom-5 left-1/2 -translate-x-1/2 p-4 w-full max-w-sm z-10 flex flex-col items-center">
+        <!-- Chat Bubble -->
+        <div id="chat-bubble" class="bg-white text-gray-800 p-3 rounded-2xl shadow-lg mb-4 hidden relative">
+            <p id="chat-text">Hello! I'm your assistant.</p>
+            <div class="absolute w-4 h-4 bg-white transform rotate-45 -bottom-1.5 left-1/2 -translate-x-1/2"></div>
+        </div>
+        
+        <!-- Chat Input -->
+        <div class="flex w-full space-x-2">
+            <input type="text" id="chat-input" placeholder="Type your message..." class="flex-grow p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button id="send-button" class="bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-md">
+                Send
             </button>
         </div>
     </div>
 
-    <!--
-        This script tag contains the JavaScript for our page.
-        It adds functionality to the button and the message box.
-    -->
-    <script>
-        // Wait for the entire page to load before running the script.
-        window.onload = function() {
-            // Get the button, message box, and close button elements by their IDs.
-            const alertButton = document.getElementById('alertButton');
-            const messageBox = document.getElementById('messageBox');
-            const closeButton = document.getElementById('closeButton');
+    <script type="module">
+        // --- CDN Imports for Three.js and GLTFLoader ---
+        // Using unpkg.com as a common CDN for npm packages
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+        // --- End CDN Imports ---
 
-            // Add an event listener to the main button.
-            // When it's clicked, we'll show the message box.
-            alertButton.addEventListener('click', () => {
-                messageBox.classList.remove('hidden');
+        let scene, camera, renderer, avatar, mixer;
+        const clock = new THREE.Clock();
+
+        const chatBubble = document.getElementById('chat-bubble');
+        const chatText = document.getElementById('chat-text');
+        const chatInput = document.getElementById('chat-input');
+        const sendButton = document.getElementById('send-button');
+        const loadingScreen = document.getElementById('loading-screen');
+        const canvasContainer = document.getElementById('canvas-container');
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111827);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 1.6, 2.5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            canvasContainer.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            directionalLight.position.set(1, 2, 3).normalize();
+            scene.add(directionalLight);
+
+            const loader = new GLTFLoader();
+            // This is the important change: we are now loading your local GLB file.
+            loader.load('./chatbot_avatar.glb', (gltf) => {
+                avatar = gltf.scene;
+                scene.add(avatar);
+
+                // Hide loading screen and show the chat UI
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => loadingScreen.classList.add('hidden'), 500);
+
+                // Set up animation if available
+                mixer = new THREE.AnimationMixer(avatar);
+                if (gltf.animations.length > 0) {
+                    const action = mixer.clipAction(gltf.animations[0]);
+                    action.play();
+                }
+
+                // Show an initial chat bubble
+                showChatBubble("Hello! I'm your assistant.");
+            },
+            (xhr) => {
+                // This is a progress callback for the loader
+                const percent = Math.round((xhr.loaded / xhr.total) * 100);
+                document.querySelector('#loading-screen p').innerText = `Loading: ${percent}%`;
+            },
+            (error) => {
+                console.error('An error occurred while loading the GLTF model:', error);
+                document.querySelector('#loading-screen p').innerText = 'Failed to load model.';
             });
 
-            // Add an event listener to the close button inside the message box.
-            // When it's clicked, we'll hide the message box.
-            closeButton.addEventListener('click', () => {
-                messageBox.classList.add('hidden');
-            });
+            window.addEventListener('resize', onWindowResize);
 
-            // Also hide the message box if the user clicks outside of it.
-            messageBox.addEventListener('click', (event) => {
-                if (event.target === messageBox) {
-                    messageBox.classList.add('hidden');
+            // Chat input and button logic
+            sendButton.addEventListener('click', () => {
+                const message = chatInput.value.trim();
+                if (message) {
+                    showChatBubble(message);
+                    chatInput.value = ''; // Clear input field
                 }
             });
-        };
-    </script>
 
+            // Allow sending a message by pressing Enter
+            chatInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    sendButton.click();
+                }
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (mixer) mixer.update(clock.getDelta());
+            renderer.render(scene, camera);
+        }
+
+        function showChatBubble(text) {
+            chatText.innerText = text;
+            chatBubble.classList.remove('hidden');
+            setTimeout(() => {
+                chatBubble.classList.add('hidden');
+            }, 5000);
+        }
+    </script>
 </body>
 </html>
