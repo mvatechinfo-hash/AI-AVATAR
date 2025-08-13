@@ -67,13 +67,23 @@
 
     <script type="module">
         // --- CDN Imports for Three.js and GLTFLoader ---
-        // Using unpkg.com as a common CDN for npm packages
+        // The previous URLs caused a module resolution error. We've switched to a more
+        // reliable CDN format to ensure the GLTFLoader can find its 'three' dependency.
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
         import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
         // --- End CDN Imports ---
 
         let scene, camera, renderer, avatar, mixer;
         const clock = new THREE.Clock();
+        
+        // New variables for eye tracking
+        let leftEye, rightEye;
+        const mouse = new THREE.Vector2();
+        const lookAtTarget = new THREE.Vector3();
+        const headBoneName = 'HeadTop_End_end'; // Replace with the actual name of your head bone if different
+        const leftEyeBoneName = 'Eye_Left'; // Assuming a bone name for the left eye
+        const rightEyeBoneName = 'Eye_Right'; // Assuming a bone name for the right eye
+        const rotationLimit = 0.5; // Limits how far the eyes can turn
 
         const chatBubble = document.getElementById('chat-bubble');
         const chatText = document.getElementById('chat-text');
@@ -110,6 +120,9 @@
                 avatar = gltf.scene;
                 scene.add(avatar);
 
+                // Find the eye and head bones for tracking
+                findBones(avatar);
+
                 // Hide loading screen and show the chat UI
                 loadingScreen.style.opacity = '0';
                 setTimeout(() => loadingScreen.classList.add('hidden'), 500);
@@ -135,6 +148,8 @@
             });
 
             window.addEventListener('resize', onWindowResize);
+            // Add a mousemove listener for eye tracking
+            window.addEventListener('mousemove', onMouseMove);
 
             // Chat input and button logic
             sendButton.addEventListener('click', () => {
@@ -152,6 +167,24 @@
                 }
             });
         }
+        
+        function findBones(model) {
+            // Traverse the model to find the specific bones for eye tracking
+            model.traverse((object) => {
+                if (object.isBone && object.name === leftEyeBoneName) {
+                    leftEye = object;
+                }
+                if (object.isBone && object.name === rightEyeBoneName) {
+                    rightEye = object;
+                }
+            });
+        }
+        
+        function onMouseMove(event) {
+            // Update the mouse position in a normalized range (-1 to +1)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
 
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -161,6 +194,33 @@
 
         function animate() {
             requestAnimationFrame(animate);
+            
+            // Eye tracking logic
+            if (leftEye && rightEye) {
+                // Calculate the target position based on the mouse
+                lookAtTarget.set(mouse.x, mouse.y, 1).unproject(camera);
+                
+                // Get the current world positions of the eyes
+                const leftEyePos = new THREE.Vector3().setFromMatrixPosition(leftEye.matrixWorld);
+                const rightEyePos = new THREE.Vector3().setFromMatrixPosition(rightEye.matrixWorld);
+                
+                // Calculate the direction vectors from the eyes to the target
+                const leftDir = new THREE.Vector3().subVectors(lookAtTarget, leftEyePos).normalize();
+                const rightDir = new THREE.Vector3().subVectors(lookAtTarget, rightEyePos).normalize();
+                
+                // Use a lookAt function to rotate the eyes, but limit the rotation
+                const leftEyeQuaternion = new THREE.Quaternion().setFromRotationMatrix(
+                    new THREE.Matrix4().lookAt(leftEyePos, lookAtTarget, leftEye.up)
+                );
+                const rightEyeQuaternion = new THREE.Quaternion().setFromRotationMatrix(
+                    new THREE.Matrix4().lookAt(rightEyePos, lookAtTarget, rightEye.up)
+                );
+                
+                // Apply the rotations, but limit them to prevent unnatural movement
+                leftEye.quaternion.slerp(leftEyeQuaternion, rotationLimit);
+                rightEye.quaternion.slerp(rightEyeQuaternion, rotationLimit);
+            }
+            
             if (mixer) mixer.update(clock.getDelta());
             renderer.render(scene, camera);
         }
