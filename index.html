@@ -237,13 +237,11 @@
                     actions[clip.name] = action;
                 });
                 
+                // Initial greeting and wave
+                const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
                 playAction(animationNames.wave, THREE.LoopOnce);
-
-                mixer.addEventListener('finished', (e) => {
-                    if (e.action === actions[animationNames.wave]) {
-                         const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-                         speakText(randomGreeting);
-                    }
+                speakText(randomGreeting, () => {
+                    playAction(animationNames.idle, THREE.LoopRepeat);
                 });
 
                 faceCamera();
@@ -292,8 +290,6 @@
                     isListening = true;
                     micButton.classList.add('listening-button');
                     console.log('Speech recognition started...');
-                    reactToInteraction();
-                    playAction(animationNames.listening, THREE.LoopRepeat);
                 };
 
                 speechRecognition.onresult = (event) => {
@@ -330,7 +326,15 @@
                 if (isListening) {
                     speechRecognition.stop();
                 } else {
-                    speechRecognition.start();
+                    reactToInteraction();
+                    const newPosition = new THREE.Vector3(0, 0, 0);
+                    setNewTarget(newPosition, () => {
+                        playAction(animationNames.wave, THREE.LoopOnce);
+                        speakText("I am listening.", () => {
+                            playAction(animationNames.listening, THREE.LoopRepeat);
+                            speechRecognition.start();
+                        });
+                    });
                 }
             }
         }
@@ -350,7 +354,15 @@
             isMoving = false;
             isTurning = false;
             faceCamera();
-            playAction(animationNames.idle, THREE.LoopRepeat);
+        }
+        
+        function handleAvatarInteraction() {
+            reactToInteraction();
+            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+            playAction(animationNames.wave, THREE.LoopOnce);
+            speakText(randomGreeting, () => {
+                playAction(animationNames.idle, THREE.LoopRepeat);
+            });
         }
 
         function onCanvasClick(event) {
@@ -363,12 +375,7 @@
             const intersectsAvatar = raycaster.intersectObject(avatar, true);
             if (intersectsAvatar.length > 0) {
                 console.log('Avatar clicked!');
-                reactToInteraction();
-                
-                const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-                playAction(animationNames.wave, THREE.LoopOnce);
-                speakText(randomGreeting);
-                
+                handleAvatarInteraction();
                 return;
             }
 
@@ -380,12 +387,13 @@
             }
         }
         
-        function setNewTarget(newPosition) {
+        function setNewTarget(newPosition, onCompleteCallback = null) {
             if (!avatar) return;
             
-            if (avatar.position.distanceTo(newPosition) < 0.1) {
+            if (avatar.position.distanceTo(newPosition) < 0.05) {
                 isMoving = false;
                 playAction(animationNames.idle, THREE.LoopRepeat);
+                if (onCompleteCallback) onCompleteCallback();
                 return;
             }
 
@@ -400,6 +408,8 @@
             isMoving = true;
             playAction(animationNames.walk, THREE.LoopRepeat);
             lastInteractionTime = Date.now();
+            
+            avatar.userData.onMoveComplete = onCompleteCallback;
         }
 
         function faceCamera() {
@@ -423,11 +433,16 @@
             }
         }
         
-        // --- FIX: Move avatar to a predefined position when chat input is focused ---
         function onChatInputFocus() {
             reactToInteraction();
             const newPosition = new THREE.Vector3(0, 0, 0); // Move to the center of the scene
-            setNewTarget(newPosition);
+            setNewTarget(newPosition, () => {
+                const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+                playAction(animationNames.wave, THREE.LoopOnce);
+                speakText(randomGreeting, () => {
+                    playAction(animationNames.idle, THREE.LoopRepeat);
+                });
+            });
         }
 
         function onChatInputBlur() {
@@ -556,9 +571,8 @@
             }
         }
 
-        function speakText(text) {
+        function speakText(text, onEndCallback = null) {
             return new Promise((resolve) => {
-                reactToInteraction();
                 if (isMoving) {
                     return;
                 }
@@ -583,7 +597,11 @@
                 };
 
                 utterance.onend = () => {
-                    playAction(animationNames.idle, THREE.LoopRepeat);
+                    if (onEndCallback) {
+                        onEndCallback();
+                    } else {
+                        playAction(animationNames.idle, THREE.LoopRepeat);
+                    }
                     resetIdleSequence();
                     resolve();
                 };
@@ -659,8 +677,7 @@
             
             if (isMoving) {
                 const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
-                // --- FIX: Stop walking when the avatar is close to the target ---
-                if (distance > 0.05) { // Use a smaller threshold for better accuracy
+                if (distance > 0.05) { 
                     if (isTurning) {
                         const elapsedTime = Date.now() - turnStartTime;
                         const turnProgress = Math.min(elapsedTime / turnDuration, 1);
@@ -676,9 +693,13 @@
                     const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
                     avatar.position.addScaledVector(direction, patrolSpeed);
                 } else {
-                    // Stop moving and go back to idle
                     isMoving = false;
-                    playAction(animationNames.idle, THREE.LoopRepeat);
+                    if (avatar.userData.onMoveComplete) {
+                        avatar.userData.onMoveComplete();
+                        avatar.userData.onMoveComplete = null;
+                    } else {
+                        playAction(animationNames.idle, THREE.LoopRepeat);
+                    }
                     lastPatrolEventTime = Date.now();
                 }
             }
