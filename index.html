@@ -117,6 +117,7 @@
         const clock = new THREE.Clock();
         const raycaster = new THREE.Raycaster();
         const pointer = new THREE.Vector2();
+        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
         
         let leftEye, rightEye, headBone, jawBone;
         const mouse = new THREE.Vector2();
@@ -208,6 +209,9 @@
                 avatar = gltf.scene;
                 scene.add(avatar);
                 
+                // Start the avatar farther away
+                avatar.position.z = -5;
+
                 avatar.userData = { isWalking: false, targetPosition: new THREE.Vector3() };
 
                 findBones(avatar);
@@ -226,7 +230,6 @@
                         playAction(animationNames.idle, THREE.LoopRepeat);
                     }
                 });
-
 
                 loadingScreen.style.opacity = '0';
                 setTimeout(() => loadingScreen.classList.add('hidden'), 500);
@@ -252,7 +255,7 @@
                     onSendMessage();
                 }
             });
-            renderer.domElement.addEventListener('mousedown', onAvatarClick, false);
+            renderer.domElement.addEventListener('mousedown', onCanvasClick, false);
             micButton.addEventListener('click', toggleSpeechRecognition);
             initSpeechRecognition();
         }
@@ -308,35 +311,45 @@
             }
         }
 
-        function onAvatarClick(event) {
-            // Calculate mouse position in normalized device coordinates (-1 to +1)
-            pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-            pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        function onCanvasClick(event) {
+            lastInteractionTime = Date.now();
+            const rect = renderer.domElement.getBoundingClientRect();
+            pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-            // Update the picking ray with the camera and mouse position
             raycaster.setFromCamera(pointer, camera);
 
-            // Check for intersections
-            const intersects = raycaster.intersectObject(avatar, true);
-
-            if (intersects.length > 0) {
+            // Check for intersection with the avatar first
+            const intersectsAvatar = raycaster.intersectObject(avatar, true);
+            if (intersectsAvatar.length > 0) {
                 console.log('Avatar clicked!');
                 stopWalking();
                 
                 const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
                 
-                // Play the wave animation and then immediately speak
+                // Play the wave animation and speak the greeting at the same time
                 playAction(animationNames.wave, THREE.LoopOnce);
+                speakText(randomGreeting);
                 
-                // Wait for the wave animation to finish before speaking.
-                // We use a setTimeout with the duration of the animation to ensure a proper sequence.
-                const waveAnimationDuration = actions[animationNames.wave].getClip().duration;
-                setTimeout(() => {
-                    speakText(randomGreeting);
-                }, waveAnimationDuration * 1000);
-                
-                lastInteractionTime = Date.now();
+                return; // Stop here if the avatar was clicked
             }
+
+            // If the avatar was not clicked, find the intersection with the ground plane
+            const intersects = new THREE.Vector3();
+            if (raycaster.ray.intersectPlane(groundPlane, intersects)) {
+                console.log('Ground clicked at:', intersects);
+                setNewTarget(intersects);
+            }
+        }
+
+        function setNewTarget(newPosition) {
+            if (!avatar || avatar.userData.isWalking) return;
+
+            avatar.userData.targetPosition.copy(newPosition);
+            avatar.userData.isWalking = true;
+            avatar.lookAt(newPosition.x, avatar.position.y, newPosition.z);
+            playAction(animationNames.walk, THREE.LoopRepeat);
+            isPatrolling = false;
         }
 
         function playAction(name, loop = THREE.LoopOnce) {
@@ -519,6 +532,7 @@
             if (avatar && avatar.userData.isWalking) {
                 avatar.userData.isWalking = false;
                 isPatrolling = false;
+                playAction(animationNames.idle, THREE.LoopRepeat);
             }
         }
 
@@ -581,11 +595,11 @@
             
             if (isPatrolling) {
                 if (!avatar.userData.isWalking) {
-                    playAction(animationNames.walk, THREE.LoopRepeat);
-                    avatar.userData.isWalking = true;
-                    // Avatar walks forward then turns around
+                    // Start a new patrol segment
                     avatar.userData.targetPosition.set(0, avatar.position.y, avatar.position.z + patrolLimit * patrolDirection);
                     avatar.lookAt(avatar.userData.targetPosition);
+                    avatar.userData.isWalking = true;
+                    playAction(animationNames.walk, THREE.LoopRepeat);
                 }
             }
 
@@ -596,7 +610,7 @@
                 if (avatar.position.distanceTo(avatar.userData.targetPosition) < 0.1) {
                     avatar.userData.isWalking = false;
                     playAction(animationNames.idle, THREE.LoopRepeat);
-                    patrolDirection *= -1; // Reverse direction
+                    patrolDirection *= -1; // Reverse direction for the next patrol segment
                     avatar.rotateY(Math.PI); // Turn the avatar around
                 }
             }
@@ -607,7 +621,7 @@
 
         function checkIdleState() {
             if (Date.now() - lastInteractionTime > IDLE_TIMEOUT) {
-                if (currentAction === actions[animationNames.idle] && !isPatrolling) {
+                if (currentAction === actions[animationNames.idle] && !isPatrolling && !avatar.userData.isWalking) {
                     isPatrolling = true;
                     lastInteractionTime = Date.now(); // Reset the timer to avoid re-triggering immediately
                 }
