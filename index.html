@@ -325,8 +325,9 @@
                     speechRecognition.stop();
                 } else {
                     reactToInteraction();
-                    avatar.position.set(0, 0, 0); // Immediately set position
-                    faceCamera(); // Immediately face the camera
+                    avatar.position.set(0, 0, 0); 
+                    faceCamera();
+                    
                     playAction(animationNames.wave, THREE.LoopOnce);
                     speakText("I am listening.", () => {
                         playAction(animationNames.listening, THREE.LoopRepeat);
@@ -354,8 +355,9 @@
         
         function handleAvatarInteraction() {
             reactToInteraction();
-            avatar.position.set(0, 0, 0); // Immediately set position
-            faceCamera(); // Immediately face the camera
+            avatar.position.set(0, 0, 0); 
+            faceCamera(); 
+            
             const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
             playAction(animationNames.wave, THREE.LoopOnce);
             speakText(randomGreeting, () => {
@@ -431,8 +433,9 @@
         
         function onChatInputFocus() {
             reactToInteraction();
-            avatar.position.set(0, 0, 0); // Immediately set position
-            faceCamera(); // Immediately face the camera
+            avatar.position.set(0, 0, 0); 
+            faceCamera(); 
+            
             const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
             playAction(animationNames.wave, THREE.LoopOnce);
             speakText(randomGreeting, () => {
