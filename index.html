@@ -165,7 +165,8 @@
         const turnDuration = 500; 
 
         let lastInteractionTime = Date.now();
-        const IDLE_TIMEOUT = 10 * 1000;
+        // The user requested a 30 second idle timeout
+        const IDLE_TIMEOUT = 30 * 1000;
 
         const chatInput = document.getElementById('chat-input');
         const sendButton = document.getElementById('send-button');
@@ -229,6 +230,7 @@
                     actions[clip.name] = action;
                 });
                 
+                // Initial behavior: wave, speak, then idle
                 faceCamera();
                 playAction(animationNames.wave, THREE.LoopOnce);
                 const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
@@ -275,6 +277,9 @@
                     isListening = true;
                     micButton.classList.add('listening-button');
                     console.log('Speech recognition started...');
+                    // User requested listening action and facing the front
+                    reactToInteraction();
+                    playAction(animationNames.listening, THREE.LoopRepeat);
                 };
 
                 speechRecognition.onresult = (event) => {
@@ -296,6 +301,9 @@
                     micButton.classList.remove('listening-button');
                     isListening = false;
                     console.log('Speech recognition ended.');
+                    if (currentAction === actions[animationNames.listening]) {
+                        playAction(animationNames.idle, THREE.LoopRepeat);
+                    }
                 };
             } else {
                 console.warn('Speech Recognition API is not supported in this browser.');
@@ -314,6 +322,16 @@
             }
         }
 
+        // New function to handle all avatar reactions to user interaction
+        function reactToInteraction() {
+            if (!avatar) return;
+            isMoving = false;
+            isTurning = false;
+            faceCamera();
+            playAction(animationNames.listening, THREE.LoopRepeat);
+            lastInteractionTime = Date.now();
+        }
+
         function onCanvasClick(event) {
             lastInteractionTime = Date.now();
             const rect = renderer.domElement.getBoundingClientRect();
@@ -325,13 +343,10 @@
             const intersectsAvatar = raycaster.intersectObject(avatar, true);
             if (intersectsAvatar.length > 0) {
                 console.log('Avatar clicked!');
-                isMoving = false;
-                isTurning = false;
+                // User requested avatar react when clicked
+                reactToInteraction();
                 
                 const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-                
-                faceCamera();
-
                 playAction(animationNames.wave, THREE.LoopOnce);
                 speakText(randomGreeting);
                 
@@ -391,10 +406,8 @@
         }
 
         function onChatInputFocus() {
-            faceCamera();
-            isMoving = false;
-            playAction(animationNames.listening, THREE.LoopRepeat);
-            lastInteractionTime = Date.now();
+            // User requested avatar react when chat is clicked
+            reactToInteraction();
         }
 
         function onChatInputBlur() {
