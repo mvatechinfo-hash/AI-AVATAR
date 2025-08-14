@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI-AVATAR</title>
+    
     <!--
-        We are using the Inter font for a clean, modern look.
-        The Tailwind CSS script provides easy-to-use utility classes for styling.
-        The Tailwind message about production is a warning, not an error, so your code is safe to run.
+        This script provides easy-to-use utility classes for styling.
+        The Tailwind message about production is a warning, not an error.
     -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -17,13 +17,17 @@
             margin: 0;
             background: #111827;
             overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
         canvas {
             display: block;
+            touch-action: none;
         }
         #chat-bubble {
             position: absolute;
-            bottom: 150px;
+            bottom: 250px; /* Adjusted position to be above the avatar's head */
             left: 50%;
             transform: translateX(-50%);
             background: white;
@@ -35,12 +39,25 @@
             color: #333;
             box-shadow: 0 4px 8px rgba(0,0,0,0.2);
             text-align: center;
+            z-index: 20;
+        }
+        #chat-bubble.show {
+            display: block;
+        }
+        .chat-ui-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 1rem;
+            width: 100%;
+            max-width: 400px;
+            z-index: 10;
         }
     </style>
     <!--
-        --- New approach using an importmap for module resolution ---
-        This tells the browser exactly where to find the 'three' and 'three/addons'
-        modules, which should resolve the import error once and for all.
+        This importmap tells the browser exactly where to find the 'three' and 'three/addons'
+        modules, resolving the previous import errors.
     -->
     <script type="importmap">
         {
@@ -51,7 +68,7 @@
         }
     </script>
 </head>
-<body class="bg-gray-900 text-white relative">
+<body class="bg-gray-900 text-white">
     
     <!-- This div will contain our 3D canvas -->
     <div id="canvas-container" class="fixed inset-0 z-0"></div>
@@ -63,14 +80,13 @@
     </div>
 
     <!-- This is the UI for the chat bubble and input -->
-    <div class="absolute bottom-5 left-1/2 -translate-x-1/2 p-4 w-full max-w-sm z-10 flex flex-col items-center">
-        <!-- Chat Bubble -->
-        <div id="chat-bubble" class="bg-white text-gray-800 p-3 rounded-2xl shadow-lg mb-4 hidden relative">
-            <p id="chat-text">Hello! I'm your assistant.</p>
-            <div class="absolute w-4 h-4 bg-white transform rotate-45 -bottom-1.5 left-1/2 -translate-x-1/2"></div>
-        </div>
-        
-        <!-- Chat Input -->
+    <div id="chat-bubble" class="hidden">
+        <p id="chat-text"></p>
+        <div class="absolute w-4 h-4 bg-white transform rotate-45 -bottom-1.5 left-1/2 -translate-x-1/2"></div>
+    </div>
+
+    <!-- Chat UI Container (initially hidden) -->
+    <div id="chat-ui" class="chat-ui-container hidden">
         <div class="flex w-full space-x-2">
             <input type="text" id="chat-input" placeholder="Type your message..." class="flex-grow p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
             <button id="send-button" class="bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-md">
@@ -78,34 +94,37 @@
             </button>
         </div>
     </div>
-
-    <!--
-        --- CDN Imports for Three.js and GLTFLoader ---
-        Now that the importmap is set up, the import statements are much cleaner.
-    -->
+    
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        // --- End CDN Imports ---
 
-        let scene, camera, renderer, avatar, mixer;
+        let scene, camera, renderer, avatar, mixer, animationClips;
         const clock = new THREE.Clock();
         
-        // New variables for eye tracking
-        let leftEye, rightEye;
+        let leftEye, rightEye, headBone, jawBone; // Added jawBone for mouth animation
+        let mouthAnimationInterval; // To control the mouth movement
+        const mouthOpen = 0.05; // Adjust this value to control how wide the mouth opens
+        let mouthOpenDirection = 1; // 1 for opening, -1 for closing
         const mouse = new THREE.Vector2();
         const lookAtTarget = new THREE.Vector3();
-        const headBoneName = 'HeadTop_End_end'; // Replace with the actual name of your head bone if different
-        const leftEyeBoneName = 'Eye_Left'; // Assuming a bone name for the left eye
-        const rightEyeBoneName = 'Eye_Right'; // Assuming a bone name for the right eye
-        const rotationLimit = 0.5; // Limits how far the eyes can turn
+        
+        const leftEyeBoneName = 'Eye_Left';
+        const rightEyeBoneName = 'Eye_Right';
+        const headBoneName = 'HeadTop_End_end';
+        const jawBoneName = 'Jaw'; // NOTE: This is an assumed bone name. Update this if your model has a different name for the jaw bone.
+        const rotationLimit = 0.5;
 
         const chatBubble = document.getElementById('chat-bubble');
         const chatText = document.getElementById('chat-text');
         const chatInput = document.getElementById('chat-input');
         const sendButton = document.getElementById('send-button');
         const loadingScreen = document.getElementById('loading-screen');
+        const chatUiContainer = document.getElementById('chat-ui');
         const canvasContainer = document.getElementById('canvas-container');
+
+        // Text-to-Speech API
+        const synth = window.speechSynthesis;
 
         init();
         animate();
@@ -115,52 +134,47 @@
             scene.background = new THREE.Color(0x111827);
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(0, 1.6, 2.5);
+            camera.position.set(0, 1.8, 3); // Adjusted camera position for a better view
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             canvasContainer.appendChild(renderer.domElement);
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
             scene.add(ambientLight);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight.position.set(1, 2, 3).normalize();
             scene.add(directionalLight);
 
             const loader = new GLTFLoader();
-            // This is the important change: we are now loading your local GLB file.
             loader.load('./chatbot_avatar.glb', (gltf) => {
                 avatar = gltf.scene;
                 scene.add(avatar);
 
-                // --- FIX: Rotate the model to face forward correctly ---
-                // Many models from Blender are oriented with +Y up.
-                // Three.js and GLTF often expect +Z up. This rotates the model to correct the orientation.
-                // We're also making a slight adjustment to the initial Z position to make sure the face is fully visible.
-                avatar.rotation.x = Math.PI / 2; // Rotate 90 degrees on the X-axis
-                avatar.position.z = -0.5;
-                
-                // Find the eye and head bones for tracking
+                // Find bones for tracking
                 findBones(avatar);
 
-                // Hide loading screen and show the chat UI
-                loadingScreen.style.opacity = '0';
-                setTimeout(() => loadingScreen.classList.add('hidden'), 500);
+                // Store all animation clips
+                animationClips = gltf.animations;
 
-                // Set up animation if available
-                mixer = new THREE.AnimationMixer(avatar);
-                if (gltf.animations.length > 0) {
-                    const action = mixer.clipAction(gltf.animations[0]);
+                // Play the default animation if available
+                if (animationClips.length > 0) {
+                    mixer = new THREE.AnimationMixer(avatar);
+                    const action = mixer.clipAction(animationClips[0]);
                     action.play();
                 }
 
-                // Show an initial chat bubble and make it last a little longer
-                showChatBubble("Hello! I'm your assistant.");
+                // Hide loading screen
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => loadingScreen.classList.add('hidden'), 500);
+
+                // Add click listener for the avatar
+                window.addEventListener('click', onAvatarClick);
+                
             },
             (xhr) => {
-                // This is a progress callback for the loader
                 const percent = Math.round((xhr.loaded / xhr.total) * 100);
                 document.querySelector('#loading-screen p').innerText = `Loading: ${percent}%`;
             },
@@ -170,40 +184,162 @@
             });
 
             window.addEventListener('resize', onWindowResize);
-            // Add a mousemove listener for eye tracking
             window.addEventListener('mousemove', onMouseMove);
 
-            // Chat input and button logic
-            sendButton.addEventListener('click', () => {
-                const message = chatInput.value.trim();
-                if (message) {
-                    showChatBubble(message);
-                    chatInput.value = ''; // Clear input field
-                }
-            });
-
-            // Allow sending a message by pressing Enter
+            sendButton.addEventListener('click', onSendMessage);
             chatInput.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter') {
-                    sendButton.click();
+                    onSendMessage();
                 }
             });
         }
         
-        function findBones(model) {
-            // Traverse the model to find the specific bones for eye tracking
-            model.traverse((object) => {
-                if (object.isBone && object.name === leftEyeBoneName) {
-                    leftEye = object;
+        function onAvatarClick(event) {
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObject(avatar, true);
+            if (intersects.length > 0) {
+                // If avatar is clicked, show the chat UI
+                chatUiContainer.classList.remove('hidden');
+                
+                // Trigger a greeting and speech
+                showChatBubble("Hello! What can I help you with?");
+                speakText("Hello! What can I help you with?");
+            }
+        }
+
+        function onSendMessage() {
+            const message = chatInput.value.trim();
+            if (message) {
+                // Clear the input and show a "thinking" message
+                chatInput.value = '';
+                showChatBubble("Thinking...");
+
+                // Simulate an API call with a placeholder for the Gemini API
+                generateResponseFromAPI(message);
+            }
+        }
+        
+        async function generateResponseFromAPI(userPrompt) {
+            // Placeholder API call using the Gemini API
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const chatHistory = [{ role: "user", parts: [{ text: userPrompt }] }];
+            const payload = { contents: chatHistory };
+
+            let retries = 0;
+            const maxRetries = 5;
+            let delay = 1000; // 1 second
+
+            while (retries < maxRetries) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 429) { // Rate limit exceeded
+                            console.warn(`API call failed with status 429. Retrying in ${delay}ms...`);
+                            await new Promise(res => setTimeout(res, delay));
+                            delay *= 2; // Exponential backoff
+                            retries++;
+                            continue;
+                        }
+                        throw new Error(`API call failed with status: ${response.status}`);
+                    }
+                    
+                    const result = await response.json();
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const responseText = result.candidates[0].content.parts[0].text;
+                        showChatBubble(responseText);
+                        speakText(responseText);
+                    } else {
+                        throw new Error("Unexpected API response structure.");
+                    }
+                    return; // Success, exit the loop
+                } catch (error) {
+                    console.error('An error occurred during API call:', error);
+                    showChatBubble("I'm sorry, I couldn't get a response. Please try again.");
+                    // Don't retry for other errors
+                    return;
                 }
-                if (object.isBone && object.name === rightEyeBoneName) {
-                    rightEye = object;
+            }
+            if (retries === maxRetries) {
+                console.error("Max retries reached. API call failed.");
+                showChatBubble("I'm sorry, the service is currently unavailable. Please try again later.");
+            }
+        }
+
+        function speakText(text) {
+            if (synth.speaking) {
+                synth.cancel();
+            }
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.pitch = 1;
+            utterance.rate = 1;
+            utterance.volume = 1;
+            
+            const voices = synth.getVoices();
+            const voice = voices.find(v => v.name.includes("Google US English"));
+            if (voice) {
+                utterance.voice = voice;
+            }
+
+            // Start the mouth animation when speech begins
+            utterance.onstart = () => {
+                startMouthAnimation();
+            };
+
+            // Stop the mouth animation when speech ends
+            utterance.onend = () => {
+                stopMouthAnimation();
+            };
+            
+            synth.speak(utterance);
+        }
+
+        // --- New functions for mouth animation ---
+        function startMouthAnimation() {
+            if (jawBone) {
+                // Use a timer to animate the mouth
+                mouthAnimationInterval = setInterval(() => {
+                    // This creates a simple open/close movement
+                    jawBone.rotation.x += mouthOpen * mouthOpenDirection;
+                    if (jawBone.rotation.x > mouthOpen || jawBone.rotation.x < 0) {
+                        mouthOpenDirection *= -1;
+                    }
+                }, 100);
+            }
+        }
+
+        function stopMouthAnimation() {
+            if (mouthAnimationInterval) {
+                clearInterval(mouthAnimationInterval);
+                mouthAnimationInterval = null;
+                if (jawBone) {
+                    jawBone.rotation.x = 0; // Return the mouth to its closed position
+                }
+            }
+        }
+
+        function findBones(model) {
+            model.traverse((object) => {
+                if (object.isBone) {
+                    if (object.name === leftEyeBoneName) leftEye = object;
+                    if (object.name === rightEyeBoneName) rightEye = object;
+                    if (object.name === headBoneName) headBone = object;
+                    if (object.name === jawBoneName) jawBone = object; // Find the jaw bone
                 }
             });
         }
         
         function onMouseMove(event) {
-            // Update the mouse position in a normalized range (-1 to +1)
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         }
@@ -217,20 +353,13 @@
         function animate() {
             requestAnimationFrame(animate);
             
-            // Eye tracking logic
-            if (leftEye && rightEye) {
-                // Calculate the target position based on the mouse
+            // Mouse-following logic for eyes and head
+            if (leftEye && rightEye && headBone) {
                 lookAtTarget.set(mouse.x, mouse.y, 1).unproject(camera);
                 
-                // Get the current world positions of the eyes
                 const leftEyePos = new THREE.Vector3().setFromMatrixPosition(leftEye.matrixWorld);
                 const rightEyePos = new THREE.Vector3().setFromMatrixPosition(rightEye.matrixWorld);
                 
-                // Calculate the direction vectors from the eyes to the target
-                const leftDir = new THREE.Vector3().subVectors(lookAtTarget, leftEyePos).normalize();
-                const rightDir = new THREE.Vector3().subVectors(lookAtTarget, rightEyePos).normalize();
-                
-                // Use a lookAt function to rotate the eyes, but limit the rotation
                 const leftEyeQuaternion = new THREE.Quaternion().setFromRotationMatrix(
                     new THREE.Matrix4().lookAt(leftEyePos, lookAtTarget, leftEye.up)
                 );
@@ -238,9 +367,14 @@
                     new THREE.Matrix4().lookAt(rightEyePos, lookAtTarget, rightEye.up)
                 );
                 
-                // Apply the rotations, but limit them to prevent unnatural movement
                 leftEye.quaternion.slerp(leftEyeQuaternion, rotationLimit);
                 rightEye.quaternion.slerp(rightEyeQuaternion, rotationLimit);
+
+                // Optional head rotation to enhance the effect
+                const headQuaternion = new THREE.Quaternion().setFromRotationMatrix(
+                    new THREE.Matrix4().lookAt(headBone.position, lookAtTarget, headBone.up)
+                );
+                headBone.quaternion.slerp(headQuaternion, rotationLimit * 0.5);
             }
             
             if (mixer) mixer.update(clock.getDelta());
@@ -249,10 +383,10 @@
 
         function showChatBubble(text) {
             chatText.innerText = text;
-            chatBubble.classList.remove('hidden');
-            // The initial chat bubble will now stay visible for 5 seconds
+            chatBubble.classList.add('show');
+            // Hide the chat bubble after 5 seconds
             setTimeout(() => {
-                chatBubble.classList.add('hidden');
+                chatBubble.classList.remove('show');
             }, 5000);
         }
     </script>
