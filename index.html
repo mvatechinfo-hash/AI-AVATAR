@@ -106,6 +106,10 @@
             <button id="mic-button" class="bg-gray-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-gray-700 transition-colors duration-200 shadow-md flex items-center justify-center">
                 <i class="fas fa-microphone"></i>
             </button>
+            <!-- New Dance button added here -->
+            <button id="dance-button" class="bg-purple-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-purple-700 transition-colors duration-200 shadow-md flex items-center justify-center">
+                <i class="fas fa-music"></i>
+            </button>
         </div>
     </div>
     
@@ -171,6 +175,7 @@
         const chatInput = document.getElementById('chat-input');
         const sendButton = document.getElementById('send-button');
         const micButton = document.getElementById('mic-button');
+        const danceButton = document.getElementById('dance-button'); // Get the new dance button
         const loadingScreen = document.getElementById('loading-screen');
         const chatUiContainer = document.getElementById('chat-ui');
         const canvasContainer = document.getElementById('canvas-container');
@@ -262,6 +267,7 @@
             });
             renderer.domElement.addEventListener('mousedown', onCanvasClick, false);
             micButton.addEventListener('click', toggleSpeechRecognition);
+            danceButton.addEventListener('click', onDanceButtonClick); // Event listener for the new button
             initSpeechRecognition();
         }
         
@@ -320,6 +326,17 @@
                     speechRecognition.start();
                 }
             }
+        }
+
+        // New function for the dance button
+        function onDanceButtonClick() {
+            if (!avatar) return;
+            isMoving = false;
+            isTurning = false;
+            avatar.position.set(0, 0, 0);
+            faceCamera();
+            playAction(animationNames.dance, THREE.LoopRepeat);
+            lastInteractionTime = Date.now();
         }
 
         // New function to handle all avatar reactions to user interaction
@@ -442,7 +459,9 @@
         }
         
         async function generateResponseFromAPI(userPrompt) {
-            const apiKey = "";
+            // !!! IMPORTANT !!!
+            // The user has provided an API key. This line has been updated.
+            const apiKey = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
             const chatHistoryContent = [];
             const messages = chatHistory.querySelectorAll('.chat-message');
@@ -649,13 +668,20 @@
 
                 if (turnProgress >= 1) {
                     isTurning = false;
-                    const newPatrolPosition = new THREE.Vector3(
-                        avatar.position.x + patrolLimit * patrolDirection,
-                        0,
-                        avatar.position.z
-                    );
-                    setNewTarget(newPatrolPosition, false);
+                    // When the turn is complete, reset lastInteractionTime to prevent immediate re-turning
+                    lastInteractionTime = Date.now();
                 }
+            }
+            
+            // New logic for idle patrol movement after turning
+            if (!isMoving && !isTurning && Date.now() - lastInteractionTime > IDLE_TIMEOUT) {
+                // Determine a new position to patrol to, based on current direction
+                const newPatrolPosition = new THREE.Vector3(
+                    avatar.position.x + patrolLimit * patrolDirection,
+                    0,
+                    avatar.position.z
+                );
+                setNewTarget(newPatrolPosition, false);
             }
 
             if (mixer) mixer.update(clock.getDelta());
@@ -665,6 +691,7 @@
         function checkIdleState() {
             if (Date.now() - lastInteractionTime > IDLE_TIMEOUT) {
                 if (!isMoving && !isTurning) {
+                    // Start the idle turning sequence
                     playAction(animationNames.idle, THREE.LoopRepeat); 
                     patrolDirection *= -1; 
                     
