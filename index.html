@@ -333,7 +333,6 @@
         function onDanceButtonClick() {
             if (!avatar) return;
             resetIdleSequence();
-            // Don't reset position on interaction, this was causing the teleporting bug
             isMoving = false;
             isTurning = false;
             faceCamera();
@@ -379,7 +378,6 @@
         function setNewTarget(newPosition) {
             if (!avatar) return;
             
-            // This is the check for if we're already at the target
             if (avatar.position.distanceTo(newPosition) < 0.1) {
                 isMoving = false;
                 playAction(animationNames.idle, THREE.LoopRepeat);
@@ -434,7 +432,7 @@
         function onSendMessage() {
             const message = chatInput.value.trim();
             if (message) {
-                reactToInteraction(); // Use the general interaction reset
+                reactToInteraction();
                 chatInput.value = '';
                 
                 appendMessage(message, 'user');
@@ -457,6 +455,13 @@
         }
         
         async function generateResponseFromAPI(userPrompt) {
+            // Check if the user's input is specifically "dance"
+            if (userPrompt.toLowerCase().trim() === 'dance') {
+                playAction(animationNames.dance, THREE.LoopRepeat);
+                // Do not speak or call the API, just return
+                return;
+            }
+
             const apiKey = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
             const chatHistoryContent = [];
@@ -512,6 +517,7 @@
                         
                         const lowerCaseText = responseText.toLowerCase();
                         if (lowerCaseText.includes('dance')) {
+                            // The dance animation is already handled by the early return, but we can keep this here as a fallback
                             playAction(animationNames.dance, THREE.LoopRepeat);
                         } else if (lowerCaseText.includes('happy') || lowerCaseText.includes('awesome')) {
                             playAction(animationNames.happy);
@@ -547,7 +553,7 @@
 
         function speakText(text) {
             return new Promise((resolve) => {
-                reactToInteraction(); // Use the general interaction reset
+                reactToInteraction();
                 if (isMoving) {
                     return;
                 }
@@ -655,7 +661,6 @@
                         avatar.quaternion.slerp(targetQuaternion, turnProgress);
                         if (turnProgress >= 1) {
                             isTurning = false;
-                            // Now that the turn is complete, start walking
                             playAction(animationNames.walk, THREE.LoopRepeat);
                         }
                     } else {
@@ -666,7 +671,6 @@
                     avatar.position.addScaledVector(direction, patrolSpeed);
                 } else {
                     isMoving = false;
-                    // When the movement is finished, reset the patrol event time
                     lastPatrolEventTime = Date.now();
                 }
             }
@@ -675,31 +679,25 @@
             renderer.render(scene, camera);
         }
 
-        // The core logic for the new patrol sequence
         function checkIdlePatrolSequence() {
             const elapsedTimeSinceLastInteraction = Date.now() - lastInteractionTime;
             const elapsedTimeSinceLastPatrolEvent = Date.now() - lastPatrolEventTime;
 
             if (elapsedTimeSinceLastInteraction < IDLE_TIMEOUT_30) {
-                // Wait for the initial 30s idle before starting any patrol
                 return;
             }
 
-            // Only enter patrol logic if not currently performing an action
             if (currentAction === actions[animationNames.idle] || currentAction === actions[animationNames.walk]) {
                 if (elapsedTimeSinceLastInteraction > IDLE_TIMEOUT_30 + PATROL_DURATION) {
-                    // We have completed a full patrol cycle, reset to idle
                     playAction(animationNames.idle, THREE.LoopRepeat);
                     resetIdleSequence();
                     return;
                 }
 
-                // Check for patrol events
                 const totalPatrolTime = Date.now() - (lastInteractionTime + IDLE_TIMEOUT_30);
                 const isWalking = (Math.floor(totalPatrolTime / (WALK_DURATION + turnDuration)) % 2 === 0);
 
                 if (isWalking) {
-                    // Walk for 3 seconds
                     if (currentAction !== actions[animationNames.walk]) {
                         playAction(animationNames.walk, THREE.LoopRepeat);
                     }
@@ -707,9 +705,7 @@
                     setNewTarget(newPatrolPosition);
 
                 } else {
-                    // Turn for 0.5 seconds and then walk again
                     if (currentAction === actions[animationNames.walk]) {
-                         // Stop walking, start turning
                          isMoving = true;
                          isTurning = true;
                          turnStartTime = Date.now();
