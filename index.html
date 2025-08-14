@@ -68,16 +68,15 @@
 
     <!--
         --- CDN Imports for Three.js and GLTFLoader ---
-        We've switched from module imports to standard script tags to fix the
-        "Failed to resolve module specifier" error. This is a more reliable
-        method for loading these libraries from a CDN in a simple HTML file.
-        These scripts expose `THREE` and `GLTFLoader` globally.
+        This time, we are using the `skypack` CDN, which is known to be very
+        reliable at resolving module dependencies in the browser. It should
+        finally fix the "Failed to resolve module specifier" error.
     -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/examples/js/loaders/GLTFLoader.js"></script>
-    <!-- --- End CDN Imports --- -->
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev/three@0.165.0';
+        import { GLTFLoader } from 'https://cdn.skypack.dev/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+        // --- End CDN Imports ---
 
-    <script>
         let scene, camera, renderer, avatar, mixer;
         const clock = new THREE.Clock();
         
