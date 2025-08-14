@@ -68,13 +68,12 @@
 
     <!--
         --- CDN Imports for Three.js and GLTFLoader ---
-        This time, we are using the `skypack` CDN, which is known to be very
-        reliable at resolving module dependencies in the browser. It should
-        finally fix the "Failed to resolve module specifier" error.
+        We've switched to the esm.sh CDN which is more reliable for module
+        imports and should resolve the "does not provide an export" error.
     -->
     <script type="module">
-        import * as THREE from 'https://cdn.skypack.dev/three@0.165.0';
-        import { GLTFLoader } from 'https://cdn.skypack.dev/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+        import * as THREE from 'https://esm.sh/three@0.165.0';
+        import { GLTFLoader } from 'https://esm.sh/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
         // --- End CDN Imports ---
 
         let scene, camera, renderer, avatar, mixer;
