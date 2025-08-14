@@ -135,6 +135,13 @@
                 avatar = gltf.scene;
                 scene.add(avatar);
 
+                // --- FIX: Rotate the model to face forward correctly ---
+                // Many models from Blender are oriented with +Y up.
+                // Three.js and GLTF often expect +Z up. This rotates the model to correct the orientation.
+                // We're also making a slight adjustment to the initial Z position to make sure the face is fully visible.
+                avatar.rotation.x = Math.PI / 2; // Rotate 90 degrees on the X-axis
+                avatar.position.z = -0.5;
+                
                 // Find the eye and head bones for tracking
                 findBones(avatar);
 
@@ -149,7 +156,7 @@
                     action.play();
                 }
 
-                // Show an initial chat bubble
+                // Show an initial chat bubble and make it last a little longer
                 showChatBubble("Hello! I'm your assistant.");
             },
             (xhr) => {
@@ -243,6 +250,7 @@
         function showChatBubble(text) {
             chatText.innerText = text;
             chatBubble.classList.remove('hidden');
+            // The initial chat bubble will now stay visible for 5 seconds
             setTimeout(() => {
                 chatBubble.classList.add('hidden');
             }, 5000);
