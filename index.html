@@ -37,6 +37,19 @@
             text-align: center;
         }
     </style>
+    <!--
+        --- New approach using an importmap for module resolution ---
+        This tells the browser exactly where to find the 'three' and 'three/addons'
+        modules, which should resolve the import error once and for all.
+    -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+            }
+        }
+    </script>
 </head>
 <body class="bg-gray-900 text-white relative">
     
@@ -68,12 +81,11 @@
 
     <!--
         --- CDN Imports for Three.js and GLTFLoader ---
-        We've switched to the jsdelivr CDN which is more reliable for module
-        imports and should resolve the "does not provide an export" error.
+        Now that the importmap is set up, the import statements are much cleaner.
     -->
     <script type="module">
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
-        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         // --- End CDN Imports ---
 
         let scene, camera, renderer, avatar, mixer;
