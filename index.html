@@ -241,6 +241,12 @@
                 speakText(randomGreeting, () => {
                     playAction(animationNames.idle, THREE.LoopRepeat);
                 });
+                
+                mixer.addEventListener('finished', (e) => {
+                    if (e.action.getClip().name === animationNames.wave && synth.speaking) {
+                        playAction(animationNames.talk, THREE.LoopRepeat);
+                    }
+                });
 
                 faceCamera();
 
@@ -587,7 +593,7 @@
                 }
 
                 utterance.onstart = () => {
-                    playAction(animationNames.talk, THREE.LoopRepeat);
+                    // This is where the talk animation would start if the wave is already done.
                 };
 
                 utterance.onend = () => {
