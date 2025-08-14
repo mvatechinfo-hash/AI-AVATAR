@@ -226,7 +226,7 @@
         }
         
         async function generateResponseFromAPI(userPrompt) {
-            const apiKey = "";
+            const apiKey = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
             const chatHistory = [{ role: "user", parts: [{ text: userPrompt }] }];
             const payload = { contents: chatHistory };
@@ -246,7 +246,7 @@
                     if (!response.ok) {
                         if (response.status === 403) {
                             console.error('API call failed with status 403. Check your API key and permissions.');
-                            // No user-facing message, just log to console.
+                            playAction(animationNames.shake);
                             return;
                         }
                         if (response.status === 429) {
@@ -256,7 +256,9 @@
                             retries++;
                             continue;
                         }
-                        throw new Error(`API call failed with status: ${response.status}`);
+                        console.error(`API call failed with status: ${response.status}`);
+                        playAction(animationNames.shake);
+                        return;
                     }
                     
                     const result = await response.json();
@@ -280,16 +282,20 @@
                         
                         speakText(responseText);
                     } else {
-                        throw new Error("Unexpected API response structure.");
+                        console.error("Unexpected API response structure.");
+                        playAction(animationNames.shake);
+                        return;
                     }
                     return;
                 } catch (error) {
                     console.error('An error occurred during API call:', error);
+                    playAction(animationNames.shake);
                     return;
                 }
             }
             if (retries === maxRetries) {
                 console.error("Max retries reached. API call failed.");
+                playAction(animationNames.shake);
             }
         }
 
