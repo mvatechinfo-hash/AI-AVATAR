@@ -159,10 +159,10 @@
         const patrolSpeed = 0.02;
         const patrolLimit = 1.5;
         let isMoving = false;
-        let isPatrolTurning = false;
+        let isTurning = false;
         let targetQuaternion = new THREE.Quaternion();
-        let patrolTurnStartTime = 0;
-        const patrolTurnDuration = 1000; // 1 second turn
+        let turnStartTime = 0;
+        const turnDuration = 500; // 0.5 second turn
 
         let lastInteractionTime = Date.now();
         const IDLE_TIMEOUT = 10 * 1000;
@@ -348,11 +348,14 @@
             // Calculate the target rotation based on the new direction
             const direction = new THREE.Vector3().subVectors(newPosition, avatar.position).normalize();
             
-            // Create a quaternion to smoothly rotate the avatar to face the new direction
             targetQuaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
             
             if (isInstantTurn) {
                 avatar.quaternion.copy(targetQuaternion); // Instant turn
+            } else {
+                // If not an instant turn, start the smooth turning process
+                isTurning = true;
+                turnStartTime = Date.now();
             }
             
             isMoving = true;
@@ -604,7 +607,7 @@
                 const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
                 if (distance > 0.1) {
                     // Smoothly turn towards the target if not an instant click
-                    if (!isPatrolTurning) {
+                    if (!isTurning) {
                         avatar.quaternion.slerp(targetQuaternion, 0.1);
                     }
                     
@@ -621,19 +624,15 @@
                 }
             }
 
-            if (isPatrolTurning) {
-                const elapsedTime = Date.now() - patrolTurnStartTime;
-                const turnProgress = Math.min(elapsedTime / patrolTurnDuration, 1);
+            if (isTurning) {
+                const elapsedTime = Date.now() - turnStartTime;
+                const turnProgress = Math.min(elapsedTime / turnDuration, 1);
                 
-                // 180-degree turn
-                const startQuaternion = new THREE.Quaternion().copy(targetQuaternion);
-                startQuaternion.slerp(targetQuaternion, 1);
-                
-                const rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI * turnProgress);
-                avatar.quaternion.copy(startQuaternion).multiply(rotation);
+                // slerp the rotation from the current quaternion to the target quaternion
+                avatar.quaternion.slerp(targetQuaternion, turnProgress);
 
                 if (turnProgress >= 1) {
-                    isPatrolTurning = false;
+                    isTurning = false;
                     // Start moving back after the turn is complete
                     const newPatrolPosition = new THREE.Vector3(
                         avatar.position.x + patrolLimit * patrolDirection,
@@ -650,11 +649,20 @@
 
         function checkIdleState() {
             if (Date.now() - lastInteractionTime > IDLE_TIMEOUT) {
-                if (!isMoving && !isPatrolTurning) {
+                if (!isMoving && !isTurning) {
                     // Stop, turn, then start walking
-                    isPatrolTurning = true;
-                    patrolTurnStartTime = Date.now();
+                    playAction(animationNames.idle, THREE.LoopRepeat); // Ensure idle animation plays during turn
                     patrolDirection *= -1; // Reverse direction
+                    
+                    // Calculate new target quaternion for a 180-degree turn
+                    const currentQuaternion = avatar.quaternion.clone();
+                    const targetRotation = new THREE.Quaternion().setFromAxisAngle(
+                        new THREE.Vector3(0, 1, 0), Math.PI
+                    );
+                    targetQuaternion.copy(currentQuaternion).multiply(targetRotation);
+                    
+                    isTurning = true;
+                    turnStartTime = Date.now();
                     lastInteractionTime = Date.now();
                 }
             }
