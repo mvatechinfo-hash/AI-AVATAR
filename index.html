@@ -237,13 +237,18 @@
                     actions[clip.name] = action;
                 });
                 
-                playAction(animationNames.idle, THREE.LoopRepeat);
+                playAction(animationNames.wave, THREE.LoopOnce);
+
+                mixer.addEventListener('finished', (e) => {
+                    if (e.action === actions[animationNames.wave]) {
+                         const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+                         speakText(randomGreeting);
+                    }
+                });
+
                 faceCamera();
 
                 setTimeout(() => {
-                    const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-                    speakText(randomGreeting);
-                    
                     loadingScreen.style.opacity = '0';
                     setTimeout(() => loadingScreen.classList.add('hidden'), 500);
                     chatUiContainer.classList.remove('hidden');
@@ -417,9 +422,12 @@
                 console.warn(`Animation clip '${name}' not found.`);
             }
         }
-
+        
+        // --- FIX: Move avatar to a predefined position when chat input is focused ---
         function onChatInputFocus() {
             reactToInteraction();
+            const newPosition = new THREE.Vector3(0, 0, 0); // Move to the center of the scene
+            setNewTarget(newPosition);
         }
 
         function onChatInputBlur() {
@@ -455,10 +463,8 @@
         }
         
         async function generateResponseFromAPI(userPrompt) {
-            // Check if the user's input is specifically "dance"
             if (userPrompt.toLowerCase().trim() === 'dance') {
                 playAction(animationNames.dance, THREE.LoopRepeat);
-                // Do not speak or call the API, just return
                 return;
             }
 
@@ -517,7 +523,6 @@
                         
                         const lowerCaseText = responseText.toLowerCase();
                         if (lowerCaseText.includes('dance')) {
-                            // The dance animation is already handled by the early return, but we can keep this here as a fallback
                             playAction(animationNames.dance, THREE.LoopRepeat);
                         } else if (lowerCaseText.includes('happy') || lowerCaseText.includes('awesome')) {
                             playAction(animationNames.happy);
@@ -654,7 +659,8 @@
             
             if (isMoving) {
                 const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
-                if (distance > 0.1) {
+                // --- FIX: Stop walking when the avatar is close to the target ---
+                if (distance > 0.05) { // Use a smaller threshold for better accuracy
                     if (isTurning) {
                         const elapsedTime = Date.now() - turnStartTime;
                         const turnProgress = Math.min(elapsedTime / turnDuration, 1);
@@ -670,7 +676,9 @@
                     const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
                     avatar.position.addScaledVector(direction, patrolSpeed);
                 } else {
+                    // Stop moving and go back to idle
                     isMoving = false;
+                    playAction(animationNames.idle, THREE.LoopRepeat);
                     lastPatrolEventTime = Date.now();
                 }
             }
