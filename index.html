@@ -186,6 +186,7 @@
         const synth = window.speechSynthesis;
         let speechRecognition;
         let isListening = false;
+        let currentGreetingText = '';
 
         init();
         animate();
@@ -236,17 +237,9 @@
                 });
                 
                 // Initial greeting and wave
-                const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-                playAction(animationNames.wave, THREE.LoopOnce);
-                speakText(randomGreeting, () => {
-                    playAction(animationNames.idle, THREE.LoopRepeat);
-                });
+                startGreetingSequence();
                 
-                mixer.addEventListener('finished', (e) => {
-                    if (e.action.getClip().name === animationNames.wave && synth.speaking) {
-                        playAction(animationNames.talk, THREE.LoopRepeat);
-                    }
-                });
+                mixer.addEventListener('finished', onAnimationFinished);
 
                 faceCamera();
 
@@ -282,6 +275,26 @@
             initSpeechRecognition();
         }
         
+        function onAnimationFinished(event) {
+            const clipName = event.action.getClip().name;
+            if (clipName === animationNames.wave) {
+                // Wave is finished, start speaking and talking
+                speakText(currentGreetingText, () => {
+                    playAction(animationNames.idle, THREE.LoopRepeat);
+                });
+            } else if (clipName === animationNames.listening) {
+                if (!isListening) {
+                    playAction(animationNames.idle, THREE.LoopRepeat);
+                    resetIdleSequence();
+                }
+            }
+        }
+        
+        function startGreetingSequence() {
+            currentGreetingText = greetings[Math.floor(Math.random() * greetings.length)];
+            playAction(animationNames.wave, THREE.LoopOnce, 2); // Wave at 2x speed
+        }
+
         function initSpeechRecognition() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (SpeechRecognition) {
@@ -314,10 +327,8 @@
                 speechRecognition.onend = () => {
                     micButton.classList.remove('listening-button');
                     isListening = false;
-                    if (currentAction === actions[animationNames.listening]) {
-                        playAction(animationNames.idle, THREE.LoopRepeat);
-                        resetIdleSequence();
-                    }
+                    playAction(animationNames.idle, THREE.LoopRepeat);
+                    resetIdleSequence();
                 };
             } else {
                 console.warn('Speech Recognition API is not supported in this browser.');
@@ -334,11 +345,8 @@
                     avatar.position.set(0, 0, 0); 
                     faceCamera();
                     
-                    playAction(animationNames.wave, THREE.LoopOnce);
-                    speakText("I am listening.", () => {
-                        playAction(animationNames.listening, THREE.LoopRepeat);
-                        speechRecognition.start();
-                    });
+                    playAction(animationNames.listening, THREE.LoopRepeat);
+                    speechRecognition.start();
                 }
             }
         }
@@ -363,12 +371,7 @@
             reactToInteraction();
             avatar.position.set(0, 0, 0); 
             faceCamera(); 
-            
-            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-            playAction(animationNames.wave, THREE.LoopOnce);
-            speakText(randomGreeting, () => {
-                playAction(animationNames.idle, THREE.LoopRepeat);
-            });
+            startGreetingSequence();
         }
 
         function onCanvasClick(event) {
@@ -422,14 +425,14 @@
             avatar.lookAt(cameraPosition.x, avatar.position.y, cameraPosition.z);
         }
 
-        function playAction(name, loop = THREE.LoopOnce) {
+        function playAction(name, loop = THREE.LoopOnce, timeScale = 1) {
             if (avatar && actions[name]) {
                 const newAction = actions[name];
                 if (newAction !== currentAction) {
                     if (currentAction) {
                         newAction.crossFadeFrom(currentAction, 0.5);
                     }
-                    newAction.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).setLoop(loop).play();
+                    newAction.reset().setEffectiveTimeScale(timeScale).setEffectiveWeight(1).setLoop(loop).play();
                     currentAction = newAction;
                 }
             } else if (avatar) {
@@ -441,12 +444,7 @@
             reactToInteraction();
             avatar.position.set(0, 0, 0); 
             faceCamera(); 
-            
-            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-            playAction(animationNames.wave, THREE.LoopOnce);
-            speakText(randomGreeting, () => {
-                playAction(animationNames.idle, THREE.LoopRepeat);
-            });
+            startGreetingSequence();
         }
 
         function onChatInputBlur() {
@@ -487,7 +485,7 @@
                 return;
             }
 
-            const apiKey = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
+            const apiKey = "";
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
             const chatHistoryContent = [];
             const messages = chatHistory.querySelectorAll('.chat-message');
@@ -593,7 +591,7 @@
                 }
 
                 utterance.onstart = () => {
-                    // This is where the talk animation would start if the wave is already done.
+                     playAction(animationNames.talk, THREE.LoopRepeat);
                 };
 
                 utterance.onend = () => {
