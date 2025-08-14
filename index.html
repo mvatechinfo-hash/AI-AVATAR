@@ -159,20 +159,20 @@
         
         // Idle patrol behavior variables
         let patrolDirection = 1;
-        const patrolSpeed = 0.005; 
+        const patrolSpeed = 0.01; // Increased speed for better visibility
         const patrolLimit = 1.5;
         let isMoving = false;
         let isTurning = false;
         let targetQuaternion = new THREE.Quaternion();
-        let turnStartTime = 0;
         const turnDuration = 500; 
+        let turnStartTime = 0;
 
-        // New variables for the specific idle/patrol sequence
+        // Variables for the specific idle/patrol sequence
         let lastInteractionTime = Date.now();
         let lastPatrolEventTime = Date.now();
-        let idlePatrolState = 'IDLE_30'; // Can be 'IDLE_30', 'PATROL_30', 'IDLE_5'
+        let idlePatrolState = 'IDLE_30'; // 'IDLE_30', 'WALK_3', 'IDLE_5'
         const IDLE_TIMEOUT_30 = 30 * 1000;
-        const PATROL_DURATION = 30 * 1000;
+        const WALK_DURATION = 3 * 1000; 
         const IDLE_TIMEOUT_5 = 5 * 1000;
 
         const chatInput = document.getElementById('chat-input');
@@ -310,6 +310,7 @@
                     micButton.classList.remove('listening-button');
                     isListening = false;
                     console.log('Speech recognition ended.');
+                    // Only switch back to idle if we're still in the listening state
                     if (currentAction === actions[animationNames.listening]) {
                         playAction(animationNames.idle, THREE.LoopRepeat);
                         resetIdleSequence();
@@ -321,7 +322,6 @@
             }
         }
 
-        // Added this function to handle the mic button click
         function toggleSpeechRecognition() {
             if (speechRecognition) {
                 if (isListening) {
@@ -332,7 +332,6 @@
             }
         }
 
-        // New function for the dance button
         function onDanceButtonClick() {
             if (!avatar) return;
             resetIdleSequence();
@@ -351,11 +350,10 @@
             isTurning = false;
             avatar.position.set(0, 0, 0);
             faceCamera();
-            playAction(animationNames.listening, THREE.LoopRepeat);
+            playAction(animationNames.idle, THREE.LoopRepeat);
         }
 
         function onCanvasClick(event) {
-            lastInteractionTime = Date.now();
             const rect = renderer.domElement.getBoundingClientRect();
             pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -378,14 +376,16 @@
             if (raycaster.ray.intersectPlane(groundPlane, intersects)) {
                 console.log('Ground clicked at:', intersects);
                 resetIdleSequence();
-                setNewTarget(intersects, true); 
+                setNewTarget(intersects); // Always use smooth turn now
             }
         }
         
-        function setNewTarget(newPosition, isInstantTurn = false) {
+        function setNewTarget(newPosition) {
             if (!avatar) return;
             
             if (avatar.position.distanceTo(newPosition) < 0.1) {
+                isMoving = false;
+                playAction(animationNames.idle, THREE.LoopRepeat);
                 return;
             }
 
@@ -394,12 +394,8 @@
             const direction = new THREE.Vector3().subVectors(newPosition, avatar.position).normalize();
             targetQuaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
             
-            if (isInstantTurn) {
-                avatar.quaternion.copy(targetQuaternion); 
-            } else {
-                isTurning = true;
-                turnStartTime = Date.now();
-            }
+            isTurning = true;
+            turnStartTime = Date.now();
             
             isMoving = true;
             playAction(animationNames.walk, THREE.LoopRepeat);
@@ -432,6 +428,7 @@
         }
 
         function onChatInputBlur() {
+            // Only switch back to idle if we're not currently talking or thinking
             if (currentAction !== actions[animationNames.talk] && currentAction !== actions[animationNames.thinking]) {
                 playAction(animationNames.idle, THREE.LoopRepeat);
                 resetIdleSequence();
@@ -614,7 +611,6 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // Resets the idle/patrol sequence and timestamps
         function resetIdleSequence() {
             lastInteractionTime = Date.now();
             lastPatrolEventTime = Date.now();
@@ -659,30 +655,24 @@
             if (isMoving) {
                 const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
                 if (distance > 0.1) {
-                    if (!isTurning) {
-                        avatar.quaternion.slerp(targetQuaternion, 0.1);
+                    if (isTurning) {
+                        const elapsedTime = Date.now() - turnStartTime;
+                        const turnProgress = Math.min(elapsedTime / turnDuration, 1);
+                        avatar.quaternion.slerp(targetQuaternion, turnProgress);
+                        if (turnProgress >= 1) {
+                            isTurning = false;
+                        }
+                    } else {
+                        avatar.quaternion.slerp(targetQuaternion, 0.05); // Smoother turn during movement
                     }
                     
                     const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
-                    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(avatar.quaternion);
-                    
-                    if (forward.dot(direction) > 0.8) {
-                         avatar.position.addScaledVector(direction, patrolSpeed);
-                    }
+                    avatar.position.addScaledVector(direction, patrolSpeed);
                 } else {
                     isMoving = false;
                     playAction(animationNames.idle, THREE.LoopRepeat);
-                }
-            }
-
-            if (isTurning) {
-                const elapsedTime = Date.now() - turnStartTime;
-                const turnProgress = Math.min(elapsedTime / turnDuration, 1);
-                
-                avatar.quaternion.slerp(targetQuaternion, turnProgress);
-
-                if (turnProgress >= 1) {
-                    isTurning = false;
+                    // Reset the patrol event time so the next state change can begin
+                    lastPatrolEventTime = Date.now();
                 }
             }
             
@@ -696,31 +686,28 @@
             const elapsedTimeSinceLastPatrolEvent = Date.now() - lastPatrolEventTime;
 
             if (elapsedTimeSinceLastInteraction < IDLE_TIMEOUT_30) {
-                return; // Wait for the initial 30s idle
+                // Wait for the initial 30s idle before starting any patrol
+                return;
             }
 
             if (isMoving || isTurning) {
-                return; // Don't interrupt manual movement
+                // Don't interrupt manual movement or turning
+                return;
             }
 
             switch (idlePatrolState) {
                 case 'IDLE_30':
                     if (elapsedTimeSinceLastPatrolEvent > IDLE_TIMEOUT_30) {
-                        // Time to start patrolling
-                        idlePatrolState = 'PATROL_30';
+                        // Time to start the first patrol walk
+                        idlePatrolState = 'WALK_3';
                         lastPatrolEventTime = Date.now();
                         patrolDirection *= -1; // Change direction
-                        
-                        const newPatrolPosition = new THREE.Vector3(
-                            patrolLimit * patrolDirection,
-                            0,
-                            0
-                        );
-                        setNewTarget(newPatrolPosition, false);
+                        const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
+                        setNewTarget(newPatrolPosition);
                     }
                     break;
-                case 'PATROL_30':
-                    if (elapsedTimeSinceLastPatrolEvent > PATROL_DURATION) {
+                case 'WALK_3':
+                    if (elapsedTimeSinceLastPatrolEvent > WALK_DURATION) {
                         // Time to idle for 5 seconds
                         idlePatrolState = 'IDLE_5';
                         lastPatrolEventTime = Date.now();
@@ -729,17 +716,12 @@
                     break;
                 case 'IDLE_5':
                     if (elapsedTimeSinceLastPatrolEvent > IDLE_TIMEOUT_5) {
-                        // Time to start patrolling again
-                        idlePatrolState = 'PATROL_30';
+                        // Time to start patrolling again, changing direction
+                        idlePatrolState = 'WALK_3';
                         lastPatrolEventTime = Date.now();
-                        patrolDirection *= -1; // Change direction
-                        
-                        const newPatrolPosition = new THREE.Vector3(
-                            patrolLimit * patrolDirection,
-                            0,
-                            0
-                        );
-                        setNewTarget(newPatrolPosition, false);
+                        patrolDirection *= -1;
+                        const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
+                        setNewTarget(newPatrolPosition);
                     }
                     break;
             }
