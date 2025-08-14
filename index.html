@@ -122,6 +122,7 @@
         let leftEye, rightEye, headBone, jawBone;
         const mouse = new THREE.Vector2();
         const lookAtTarget = new THREE.Vector3();
+        const cameraTarget = new THREE.Vector3();
         
         const leftEyeBoneName = 'Eye_Left';
         const rightEyeBoneName = 'Eye_Right';
@@ -154,13 +155,14 @@
         let currentAction;
         const actions = {};
         
+        // Re-enabled idle patrol behavior
         let isPatrolling = false;
         let patrolDirection = 1;
-        const patrolSpeed = 0.005;
+        const patrolSpeed = 0.02;
         const patrolLimit = 1.5;
 
         let lastInteractionTime = Date.now();
-        const IDLE_TIMEOUT = 10 * 1000; // Reduced to 10 seconds
+        const IDLE_TIMEOUT = 10 * 1000;
 
         const chatInput = document.getElementById('chat-input');
         const sendButton = document.getElementById('send-button');
@@ -209,9 +211,7 @@
                 avatar = gltf.scene;
                 scene.add(avatar);
                 
-                // Start the avatar farther away
                 avatar.position.z = -5;
-
                 avatar.userData = { isWalking: false, targetPosition: new THREE.Vector3() };
 
                 findBones(avatar);
@@ -224,13 +224,11 @@
                 });
                 
                 // Initial state: Play wave, then transition to idle
+                faceCamera();
                 playAction(animationNames.wave, THREE.LoopOnce);
-                mixer.addEventListener('finished', (e) => {
-                    if (e.action === actions[animationNames.wave]) {
-                        playAction(animationNames.idle, THREE.LoopRepeat);
-                    }
-                });
-
+                const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+                speakText(randomGreeting);
+                
                 loadingScreen.style.opacity = '0';
                 setTimeout(() => loadingScreen.classList.add('hidden'), 500);
                 chatUiContainer.classList.remove('hidden');
@@ -246,6 +244,7 @@
             });
 
             window.addEventListener('resize', onWindowResize);
+            // Re-enabled mouse move listener for head/eye tracking
             window.addEventListener('mousemove', onMouseMove);
             chatInput.addEventListener('focus', onChatInputFocus);
             chatInput.addEventListener('blur', onChatInputBlur);
@@ -264,7 +263,7 @@
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (SpeechRecognition) {
                 speechRecognition = new SpeechRecognition();
-                speechRecognition.continuous = false; // Listen for a single continuous phrase
+                speechRecognition.continuous = false;
                 speechRecognition.interimResults = false;
                 speechRecognition.lang = 'en-US';
 
@@ -295,7 +294,7 @@
                 };
             } else {
                 console.warn('Speech Recognition API is not supported in this browser.');
-                micButton.style.display = 'none'; // Hide button if not supported
+                micButton.style.display = 'none';
             }
         }
 
@@ -319,7 +318,6 @@
 
             raycaster.setFromCamera(pointer, camera);
 
-            // Check for intersection with the avatar first
             const intersectsAvatar = raycaster.intersectObject(avatar, true);
             if (intersectsAvatar.length > 0) {
                 console.log('Avatar clicked!');
@@ -327,14 +325,14 @@
                 
                 const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
                 
-                // Play the wave animation and speak the greeting at the same time
+                faceCamera();
+
                 playAction(animationNames.wave, THREE.LoopOnce);
                 speakText(randomGreeting);
                 
-                return; // Stop here if the avatar was clicked
+                return;
             }
 
-            // If the avatar was not clicked, find the intersection with the ground plane
             const intersects = new THREE.Vector3();
             if (raycaster.ray.intersectPlane(groundPlane, intersects)) {
                 console.log('Ground clicked at:', intersects);
@@ -349,7 +347,14 @@
             avatar.userData.isWalking = true;
             avatar.lookAt(newPosition.x, avatar.position.y, newPosition.z);
             playAction(animationNames.walk, THREE.LoopRepeat);
+            // Stop patrolling when a new target is set by a click
             isPatrolling = false;
+        }
+
+        function faceCamera() {
+            if (!avatar) return;
+            const cameraPosition = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+            avatar.lookAt(cameraPosition.x, avatar.position.y, cameraPosition.z);
         }
 
         function playAction(name, loop = THREE.LoopOnce) {
@@ -363,11 +368,12 @@
                     currentAction = newAction;
                 }
             } else if (avatar) {
-                console.warn(`Animation clip '${name}' not found. Please check your GLB model's animation names.`);
+                console.warn(`Animation clip '${name}' not found.`);
             }
         }
 
         function onChatInputFocus() {
+            faceCamera();
             stopWalking();
             playAction(animationNames.listening, THREE.LoopRepeat);
             lastInteractionTime = Date.now();
@@ -388,6 +394,7 @@
                 appendMessage(message, 'user');
                 
                 stopWalking();
+                faceCamera();
                 playAction(animationNames.thinking, THREE.LoopRepeat);
 
                 generateResponseFromAPI(message);
@@ -431,7 +438,7 @@
 
                     if (!response.ok) {
                         if (response.status === 403) {
-                            console.error('API call failed with status 403. Check your API key and permissions.');
+                            console.error('API call failed with status 403.');
                             playAction(animationNames.shake);
                             appendMessage('API Error: Please check your API key and permissions.', 'bot');
                             return;
@@ -495,7 +502,6 @@
         function speakText(text) {
             return new Promise((resolve) => {
                 lastInteractionTime = Date.now();
-                // Don't speak if avatar is walking
                 if (avatar.userData.isWalking) {
                     return;
                 }
@@ -571,6 +577,7 @@
             
             checkIdleState();
             
+            // Re-enabled head and eye tracking
             if (leftEye && rightEye && headBone) {
                 lookAtTarget.set(mouse.x, mouse.y, 1).unproject(camera);
                 
@@ -595,7 +602,6 @@
             
             if (isPatrolling) {
                 if (!avatar.userData.isWalking) {
-                    // Start a new patrol segment
                     avatar.userData.targetPosition.set(0, avatar.position.y, avatar.position.z + patrolLimit * patrolDirection);
                     avatar.lookAt(avatar.userData.targetPosition);
                     avatar.userData.isWalking = true;
@@ -610,8 +616,8 @@
                 if (avatar.position.distanceTo(avatar.userData.targetPosition) < 0.1) {
                     avatar.userData.isWalking = false;
                     playAction(animationNames.idle, THREE.LoopRepeat);
-                    patrolDirection *= -1; // Reverse direction for the next patrol segment
-                    avatar.rotateY(Math.PI); // Turn the avatar around
+                    patrolDirection *= -1;
+                    avatar.rotateY(Math.PI);
                 }
             }
 
@@ -620,10 +626,12 @@
         }
 
         function checkIdleState() {
+            // Check if the avatar has been idle for the timeout period
             if (Date.now() - lastInteractionTime > IDLE_TIMEOUT) {
+                // Check if the avatar is currently in the idle state and not already patrolling or walking
                 if (currentAction === actions[animationNames.idle] && !isPatrolling && !avatar.userData.isWalking) {
                     isPatrolling = true;
-                    lastInteractionTime = Date.now(); // Reset the timer to avoid re-triggering immediately
+                    lastInteractionTime = Date.now();
                 }
             }
         }
