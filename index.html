@@ -68,12 +68,12 @@
 
     <!--
         --- CDN Imports for Three.js and GLTFLoader ---
-        We've switched to the esm.sh CDN which is more reliable for module
+        We've switched to the jsdelivr CDN which is more reliable for module
         imports and should resolve the "does not provide an export" error.
     -->
     <script type="module">
-        import * as THREE from 'https://esm.sh/three@0.165.0';
-        import { GLTFLoader } from 'https://esm.sh/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
         // --- End CDN Imports ---
 
         let scene, camera, renderer, avatar, mixer;
