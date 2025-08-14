@@ -135,11 +135,6 @@
                 avatar = gltf.scene;
                 scene.add(avatar);
 
-                // --- FIX: Rotate the model to face forward correctly ---
-                // Many models from Blender are oriented with +Y up.
-                // Three.js and GLTF often expect +Z up. This rotates the model to correct the orientation.
-                avatar.rotation.x = Math.PI / 2; // Rotate 90 degrees on the X-axis
-                
                 // Find the eye and head bones for tracking
                 findBones(avatar);
 
