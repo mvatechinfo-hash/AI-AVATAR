@@ -99,21 +99,36 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        let scene, camera, renderer, avatar, mixer, animationClips;
+        let scene, camera, renderer, avatar, mixer;
         const clock = new THREE.Clock();
         
-        let leftEye, rightEye, headBone, jawBone; // Added jawBone for mouth animation
-        let mouthAnimationInterval; // To control the mouth movement
-        const mouthOpen = 0.05; // Adjust this value to control how wide the mouth opens
-        let mouthOpenDirection = 1; // 1 for opening, -1 for closing
+        let leftEye, rightEye, headBone, jawBone;
         const mouse = new THREE.Vector2();
         const lookAtTarget = new THREE.Vector3();
         
+        // Bone names from the model, ensure these match your GLB file
         const leftEyeBoneName = 'Eye_Left';
         const rightEyeBoneName = 'Eye_Right';
         const headBoneName = 'HeadTop_End_end';
-        const jawBoneName = 'Jaw'; // NOTE: This is an assumed bone name. Update this if your model has a different name for the jaw bone.
+        const jawBoneName = 'Jaw'; 
         const rotationLimit = 0.5;
+
+        // Animation clip names from the GLB file. These must be precise.
+        const animationNames = {
+            idle: 'Idle',
+            wave: 'Wave',
+            talk: 'Talk',
+            listening: 'Listen',
+            thinking: 'Think',
+            point: 'Point',
+            nod: 'Nod',
+            headShake: 'HeadShake',
+            walk: 'Walk',
+            happy: 'Happy',
+        };
+
+        let currentAction;
+        const actions = {};
 
         const chatBubble = document.getElementById('chat-bubble');
         const chatText = document.getElementById('chat-text');
@@ -122,6 +137,11 @@
         const loadingScreen = document.getElementById('loading-screen');
         const chatUiContainer = document.getElementById('chat-ui');
         const canvasContainer = document.getElementById('canvas-container');
+
+        // State for walking patrol logic
+        let patrolDirection = 1; // 1 for moving right, -1 for moving left
+        const patrolSpeed = 0.005;
+        const patrolLimit = 1.5;
 
         // Text-to-Speech API
         const synth = window.speechSynthesis;
@@ -134,7 +154,7 @@
             scene.background = new THREE.Color(0x111827);
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(0, 1.8, 3); // Adjusted camera position for a better view
+            camera.position.set(0, 1.8, 3);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -148,6 +168,15 @@
             directionalLight.position.set(1, 2, 3).normalize();
             scene.add(directionalLight);
 
+            // Add a ground plane for the avatar to stand on and for click-to-walk logic
+            const ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(100, 100),
+                new THREE.MeshStandardMaterial({ color: 0x222222 })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -0.01;
+            scene.add(ground);
+
             const loader = new GLTFLoader();
             loader.load('./chatbot_avatar.glb', (gltf) => {
                 avatar = gltf.scene;
@@ -156,22 +185,24 @@
                 // Find bones for tracking
                 findBones(avatar);
 
-                // Store all animation clips
-                animationClips = gltf.animations;
-
-                // Play the default animation if available
-                if (animationClips.length > 0) {
-                    mixer = new THREE.AnimationMixer(avatar);
-                    const action = mixer.clipAction(animationClips[0]);
-                    action.play();
-                }
-
-                // Hide loading screen
+                // Initialize animation mixer and actions
+                mixer = new THREE.AnimationMixer(avatar);
+                gltf.animations.forEach(clip => {
+                    const action = mixer.clipAction(clip);
+                    actions[clip.name] = action;
+                });
+                
+                // Play the initial wave action, then transition to idle
+                playAction(animationNames.wave);
+                mixer.addEventListener('finished', onActionFinished); // Listen for the end of the wave
+                
+                // Hide loading screen and show UI
                 loadingScreen.style.opacity = '0';
                 setTimeout(() => loadingScreen.classList.add('hidden'), 500);
+                chatUiContainer.classList.remove('hidden');
 
                 // Add click listener for the avatar
-                window.addEventListener('click', onAvatarClick);
+                window.addEventListener('click', onSceneClick);
                 
             },
             (xhr) => {
@@ -185,7 +216,8 @@
 
             window.addEventListener('resize', onWindowResize);
             window.addEventListener('mousemove', onMouseMove);
-
+            chatInput.addEventListener('focus', onChatInputFocus);
+            chatInput.addEventListener('blur', onChatInputBlur);
             sendButton.addEventListener('click', onSendMessage);
             chatInput.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter') {
@@ -194,20 +226,78 @@
             });
         }
         
-        function onAvatarClick(event) {
-            const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(mouse, camera);
-
-            const intersects = raycaster.intersectObject(avatar, true);
-            if (intersects.length > 0) {
-                // If avatar is clicked, show the chat UI
-                chatUiContainer.classList.remove('hidden');
-                
-                // Trigger a greeting and speech
-                showChatBubble("Hello! What can I help you with?");
-                speakText("Hello! What can I help you with?");
+        function playAction(name, loop = THREE.LoopOnce) {
+            if (actions[name]) {
+                const newAction = actions[name];
+                if (newAction !== currentAction) {
+                    if (currentAction) {
+                        newAction.crossFadeFrom(currentAction, 0.5); // Smooth blend
+                    }
+                    newAction.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).setLoop(loop).play();
+                    currentAction = newAction;
+                }
+            } else {
+                console.warn(`Animation clip '${name}' not found. Please check your GLB model.`);
             }
         }
+
+        function onChatInputFocus() {
+            playAction(animationNames.listening, THREE.LoopRepeat);
+        }
+
+        function onChatInputBlur() {
+            // Only return to idle if not already doing something else like talking or thinking
+            if (currentAction !== actions[animationNames.talk] && currentAction !== actions[animationNames.thinking]) {
+                playAction(animationNames.idle, THREE.LoopRepeat);
+            }
+        }
+
+        function onSceneClick(event) {
+            const raycaster = new THREE.Raycaster();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            // Check if we clicked on the avatar
+            const avatarIntersects = raycaster.intersectObject(avatar, true);
+            if (avatarIntersects.length > 0) {
+                // If avatar is clicked, trigger wave action and a greeting
+                playAction(animationNames.wave);
+                mixer.addEventListener('finished', onActionFinished); // Listen for the end of the wave
+                
+                const greeting = "Hello! How are you today? How may I help you?";
+                showChatBubble(greeting);
+                speakText(greeting);
+                return; // Stop here if avatar was clicked
+            }
+            
+            // Check if we clicked on the ground plane to make the avatar walk
+            const groundPlane = scene.children.find(obj => obj.geometry instanceof THREE.PlaneGeometry);
+            const groundIntersects = raycaster.intersectObject(groundPlane);
+            if (groundIntersects.length > 0) {
+                const targetPosition = groundIntersects[0].point;
+                // Make the avatar look at the target before walking
+                avatar.lookAt(targetPosition.x, avatar.position.y, targetPosition.z);
+                // Start the walk animation
+                playAction(animationNames.walk, THREE.LoopRepeat);
+                // Set the target position for the avatar to walk to
+                avatar.userData.targetPosition = targetPosition;
+                // Add a flag to indicate the avatar is walking
+                avatar.userData.isWalking = true;
+            }
+        }
+
+        function onActionFinished(event) {
+            // When an action that doesn't loop is finished, transition back to idle
+            if (event.action === actions[animationNames.wave]) {
+                playAction(animationNames.idle, THREE.LoopRepeat);
+            }
+            if (event.action === actions[animationNames.nod] || event.action === actions[animationNames.headShake] || event.action === actions[animationNames.point] || event.action === actions[animationNames.happy]) {
+                playAction(animationNames.idle, THREE.LoopRepeat);
+            }
+            mixer.removeEventListener('finished', onActionFinished);
+        }
+
 
         function onSendMessage() {
             const message = chatInput.value.trim();
@@ -215,6 +305,8 @@
                 // Clear the input and show a "thinking" message
                 chatInput.value = '';
                 showChatBubble("Thinking...");
+                
+                playAction(animationNames.thinking, THREE.LoopRepeat);
 
                 // Simulate an API call with a placeholder for the Gemini API
                 generateResponseFromAPI(message);
@@ -256,6 +348,18 @@
                         result.candidates[0].content && result.candidates[0].content.parts &&
                         result.candidates[0].content.parts.length > 0) {
                         const responseText = result.candidates[0].content.parts[0].text;
+                        
+                        // Check for keywords to trigger animations
+                        if (responseText.toLowerCase().includes('happy') || responseText.toLowerCase().includes('awesome')) {
+                            playAction(animationNames.happy);
+                        } else if (responseText.toLowerCase().includes('yes') || responseText.toLowerCase().includes('correct')) {
+                            playAction(animationNames.nod);
+                        } else if (responseText.toLowerCase().includes('no') || responseText.toLowerCase().includes('incorrect')) {
+                            playAction(animationNames.headShake);
+                        } else if (responseText.toLowerCase().includes('important') || responseText.toLowerCase().includes('note')) {
+                            playAction(animationNames.point);
+                        }
+                        // Speak the text
                         showChatBubble(responseText);
                         speakText(responseText);
                     } else {
@@ -276,56 +380,35 @@
         }
 
         function speakText(text) {
-            if (synth.speaking) {
-                synth.cancel();
-            }
-            
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.pitch = 1;
-            utterance.rate = 1;
-            utterance.volume = 1;
-            
-            const voices = synth.getVoices();
-            const voice = voices.find(v => v.name.includes("Google US English"));
-            if (voice) {
-                utterance.voice = voice;
-            }
-
-            // Start the mouth animation when speech begins
-            utterance.onstart = () => {
-                startMouthAnimation();
-            };
-
-            // Stop the mouth animation when speech ends
-            utterance.onend = () => {
-                stopMouthAnimation();
-            };
-            
-            synth.speak(utterance);
-        }
-
-        // --- New functions for mouth animation ---
-        function startMouthAnimation() {
-            if (jawBone) {
-                // Use a timer to animate the mouth
-                mouthAnimationInterval = setInterval(() => {
-                    // This creates a simple open/close movement
-                    jawBone.rotation.x += mouthOpen * mouthOpenDirection;
-                    if (jawBone.rotation.x > mouthOpen || jawBone.rotation.x < 0) {
-                        mouthOpenDirection *= -1;
-                    }
-                }, 100);
-            }
-        }
-
-        function stopMouthAnimation() {
-            if (mouthAnimationInterval) {
-                clearInterval(mouthAnimationInterval);
-                mouthAnimationInterval = null;
-                if (jawBone) {
-                    jawBone.rotation.x = 0; // Return the mouth to its closed position
+            return new Promise((resolve) => {
+                if (synth.speaking) {
+                    synth.cancel();
                 }
-            }
+                
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.pitch = 1;
+                utterance.rate = 1;
+                utterance.volume = 1;
+                
+                const voices = synth.getVoices();
+                const voice = voices.find(v => v.name.includes("Google US English"));
+                if (voice) {
+                    utterance.voice = voice;
+                }
+
+                // Start the talking animation when speech begins
+                utterance.onstart = () => {
+                    playAction(animationNames.talk, THREE.LoopRepeat);
+                };
+
+                // Stop the talking animation when speech ends and resolve the promise
+                utterance.onend = () => {
+                    playAction(animationNames.idle, THREE.LoopRepeat);
+                    resolve();
+                };
+                
+                synth.speak(utterance);
+            });
         }
 
         function findBones(model) {
@@ -334,7 +417,7 @@
                     if (object.name === leftEyeBoneName) leftEye = object;
                     if (object.name === rightEyeBoneName) rightEye = object;
                     if (object.name === headBoneName) headBone = object;
-                    if (object.name === jawBoneName) jawBone = object; // Find the jaw bone
+                    if (object.name === jawBoneName) jawBone = object;
                 }
             });
         }
@@ -377,6 +460,30 @@
                 headBone.quaternion.slerp(headQuaternion, rotationLimit * 0.5);
             }
             
+            // Walking patrol logic
+            if (currentAction === actions[animationNames.idle] || currentAction === actions[animationNames.walk]) {
+                if (!avatar.userData.isWalking) {
+                    // Start walking when in idle
+                    playAction(animationNames.walk, THREE.LoopRepeat);
+                    avatar.userData.isWalking = true;
+                    avatar.userData.targetPosition = new THREE.Vector3(patrolLimit * patrolDirection, avatar.position.y, avatar.position.z);
+                    avatar.lookAt(avatar.userData.targetPosition);
+                }
+            }
+
+            // Move the avatar if it's walking
+            if (avatar && avatar.userData.isWalking) {
+                const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
+                avatar.position.addScaledVector(direction, patrolSpeed);
+                
+                // Check if avatar has reached the target
+                if (avatar.position.distanceTo(avatar.userData.targetPosition) < 0.1) {
+                    avatar.userData.isWalking = false;
+                    playAction(animationNames.idle, THREE.LoopRepeat);
+                    patrolDirection *= -1; // Reverse direction for patrol
+                }
+            }
+
             if (mixer) mixer.update(clock.getDelta());
             renderer.render(scene, camera);
         }
