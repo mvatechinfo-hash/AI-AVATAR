@@ -67,10 +67,9 @@
 
     <script type="module">
         // --- CDN Imports for Three.js and GLTFLoader ---
-        // We've switched to the esm.sh CDN which correctly handles module dependencies
-        // and resolves the "Failed to resolve module specifier" error.
-        import * as THREE from 'https://esm.sh/three@0.165.0';
-        import { GLTFLoader } from 'https://esm.sh/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+        // We've changed the CDN path to a more reliable one to fix the "Failed to resolve module specifier" error.
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
         // --- End CDN Imports ---
 
         let scene, camera, renderer, avatar, mixer;
@@ -80,10 +79,10 @@
         let leftEye, rightEye;
         const mouse = new THREE.Vector2();
         const lookAtTarget = new THREE.Vector3();
-        const headBoneName = 'HeadTop_End_end'; // Replace with the actual name of your head bone if different
-        const leftEyeBoneName = 'Eye_Left'; // Assuming a bone name for the left eye
-        const rightEyeBoneName = 'Eye_Right'; // Assuming a bone name for the right eye
-        const rotationLimit = 0.5; // Limits how far the eyes can turn
+        const headBoneName = 'HeadTop_End'; 
+        const leftEyeBoneName = 'Eye_Left';
+        const rightEyeBoneName = 'Eye_Right';
+        const rotationLimit = 0.5;
 
         const chatBubble = document.getElementById('chat-bubble');
         const chatText = document.getElementById('chat-text');
@@ -115,7 +114,7 @@
             scene.add(directionalLight);
 
             const loader = new GLTFLoader();
-            // This is the important change: we are now loading your local GLB file.
+            //loadinglocal GLB file.
             loader.load('./chatbot_avatar.glb', (gltf) => {
                 avatar = gltf.scene;
                 scene.add(avatar);
