@@ -708,6 +708,11 @@
         }
 
         function checkIdlePatrolSequence() {
+            // New guard clause: do not run patrol logic if the avatar is currently moving.
+            if (isMoving) {
+                return;
+            }
+
             const elapsedTimeSinceLastInteraction = Date.now() - lastInteractionTime;
             const elapsedTimeSinceLastPatrolEvent = Date.now() - lastPatrolEventTime;
 
