@@ -114,6 +114,8 @@
         const rotationLimit = 0.5;
 
         // Animation clip names from the GLB file. These must be precise.
+        // It's very likely these names are slightly different in your file.
+        // CHECK THE CONSOLE for the correct names and update this object.
         const animationNames = {
             idle: 'Idle',
             wave: 'Wave',
@@ -129,6 +131,8 @@
 
         let currentAction;
         const actions = {};
+        // State for walking patrol logic
+        let isPatrolling = false;
 
         const chatBubble = document.getElementById('chat-bubble');
         const chatText = document.getElementById('chat-text');
@@ -181,12 +185,17 @@
             loader.load('./chatbot_avatar.glb', (gltf) => {
                 avatar = gltf.scene;
                 scene.add(avatar);
+                
+                // Initialize userData on the avatar to prevent 'undefined' errors
+                avatar.userData = {};
 
                 // Find bones for tracking
                 findBones(avatar);
 
                 // Initialize animation mixer and actions
                 mixer = new THREE.AnimationMixer(avatar);
+                // Log all found animation names for debugging purposes
+                console.log('Found animations in GLB:', gltf.animations.map(clip => clip.name));
                 gltf.animations.forEach(clip => {
                     const action = mixer.clipAction(clip);
                     actions[clip.name] = action;
@@ -237,7 +246,7 @@
                     currentAction = newAction;
                 }
             } else {
-                console.warn(`Animation clip '${name}' not found. Please check your GLB model.`);
+                console.warn(`Animation clip '${name}' not found. Please check your GLB model's animation names.`);
             }
         }
 
@@ -259,16 +268,18 @@
             raycaster.setFromCamera(mouse, camera);
 
             // Check if we clicked on the avatar
-            const avatarIntersects = raycaster.intersectObject(avatar, true);
-            if (avatarIntersects.length > 0) {
-                // If avatar is clicked, trigger wave action and a greeting
-                playAction(animationNames.wave);
-                mixer.addEventListener('finished', onActionFinished); // Listen for the end of the wave
-                
-                const greeting = "Hello! How are you today? How may I help you?";
-                showChatBubble(greeting);
-                speakText(greeting);
-                return; // Stop here if avatar was clicked
+            if (avatar) { // Added a check to ensure avatar exists
+                const avatarIntersects = raycaster.intersectObject(avatar, true);
+                if (avatarIntersects.length > 0) {
+                    // If avatar is clicked, trigger wave action and a greeting
+                    playAction(animationNames.wave);
+                    mixer.addEventListener('finished', onActionFinished); // Listen for the end of the wave
+                    
+                    const greeting = "Hello! How are you today? How may I help you?";
+                    showChatBubble(greeting);
+                    speakText(greeting);
+                    return; // Stop here if avatar was clicked
+                }
             }
             
             // Check if we clicked on the ground plane to make the avatar walk
@@ -277,13 +288,16 @@
             if (groundIntersects.length > 0) {
                 const targetPosition = groundIntersects[0].point;
                 // Make the avatar look at the target before walking
-                avatar.lookAt(targetPosition.x, avatar.position.y, targetPosition.z);
+                if (avatar) avatar.lookAt(targetPosition.x, avatar.position.y, targetPosition.z);
                 // Start the walk animation
                 playAction(animationNames.walk, THREE.LoopRepeat);
                 // Set the target position for the avatar to walk to
-                avatar.userData.targetPosition = targetPosition;
-                // Add a flag to indicate the avatar is walking
-                avatar.userData.isWalking = true;
+                if (avatar) {
+                    avatar.userData.targetPosition = targetPosition;
+                    // Add a flag to indicate the avatar is walking
+                    avatar.userData.isWalking = true;
+                    isPatrolling = false; // Stop patrolling when manually walking
+                }
             }
         }
 
@@ -307,6 +321,7 @@
                 showChatBubble("Thinking...");
                 
                 playAction(animationNames.thinking, THREE.LoopRepeat);
+                isPatrolling = false;
 
                 // Simulate an API call with a placeholder for the Gemini API
                 generateResponseFromAPI(message);
@@ -333,6 +348,11 @@
                     });
 
                     if (!response.ok) {
+                        if (response.status === 403) {
+                            console.error('API call failed with status 403. Check your API key and permissions.');
+                            showChatBubble("I'm sorry, I'm having trouble connecting. Please try again later.");
+                            return;
+                        }
                         if (response.status === 429) { // Rate limit exceeded
                             console.warn(`API call failed with status 429. Retrying in ${delay}ms...`);
                             await new Promise(res => setTimeout(res, delay));
@@ -423,8 +443,10 @@
         }
         
         function onMouseMove(event) {
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            if (avatar) {
+                mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            }
         }
 
         function onWindowResize() {
@@ -435,6 +457,13 @@
 
         function animate() {
             requestAnimationFrame(animate);
+
+            // Only run the animation logic once the avatar model is loaded
+            if (!avatar || !mixer) {
+                if (mixer) mixer.update(clock.getDelta());
+                renderer.render(scene, camera);
+                return;
+            }
             
             // Mouse-following logic for eyes and head
             if (leftEye && rightEye && headBone) {
@@ -461,14 +490,17 @@
             }
             
             // Walking patrol logic
-            if (currentAction === actions[animationNames.idle] || currentAction === actions[animationNames.walk]) {
+            if (isPatrolling) {
+                // If not currently walking, start a walk to the next patrol point
                 if (!avatar.userData.isWalking) {
-                    // Start walking when in idle
                     playAction(animationNames.walk, THREE.LoopRepeat);
                     avatar.userData.isWalking = true;
                     avatar.userData.targetPosition = new THREE.Vector3(patrolLimit * patrolDirection, avatar.position.y, avatar.position.z);
                     avatar.lookAt(avatar.userData.targetPosition);
                 }
+            } else if (currentAction === actions[animationNames.idle]) {
+                // If idle and not walking, start patrolling
+                isPatrolling = true;
             }
 
             // Move the avatar if it's walking
