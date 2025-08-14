@@ -7,6 +7,7 @@
     <!--
         We are using the Inter font for a clean, modern look.
         The Tailwind CSS script provides easy-to-use utility classes for styling.
+        The Tailwind message about production is a warning, not an error, so your code is safe to run.
     -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -65,13 +66,18 @@
         </div>
     </div>
 
-    <script type="module">
-        // --- CDN Imports for Three.js and GLTFLoader ---
-        // We've changed the CDN path to a more reliable one to fix the "Failed to resolve module specifier" error.
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
-        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
-        // --- End CDN Imports ---
+    <!--
+        --- CDN Imports for Three.js and GLTFLoader ---
+        We've switched from module imports to standard script tags to fix the
+        "Failed to resolve module specifier" error. This is a more reliable
+        method for loading these libraries from a CDN in a simple HTML file.
+        These scripts expose `THREE` and `GLTFLoader` globally.
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- --- End CDN Imports --- -->
 
+    <script>
         let scene, camera, renderer, avatar, mixer;
         const clock = new THREE.Clock();
         
@@ -79,10 +85,10 @@
         let leftEye, rightEye;
         const mouse = new THREE.Vector2();
         const lookAtTarget = new THREE.Vector3();
-        const headBoneName = 'HeadTop_End'; 
-        const leftEyeBoneName = 'Eye_Left';
-        const rightEyeBoneName = 'Eye_Right';
-        const rotationLimit = 0.5;
+        const headBoneName = 'HeadTop_End_end'; // Replace with the actual name of your head bone if different
+        const leftEyeBoneName = 'Eye_Left'; // Assuming a bone name for the left eye
+        const rightEyeBoneName = 'Eye_Right'; // Assuming a bone name for the right eye
+        const rotationLimit = 0.5; // Limits how far the eyes can turn
 
         const chatBubble = document.getElementById('chat-bubble');
         const chatText = document.getElementById('chat-text');
@@ -114,7 +120,7 @@
             scene.add(directionalLight);
 
             const loader = new GLTFLoader();
-            //loadinglocal GLB file.
+            // This is the important change: we are now loading your local GLB file.
             loader.load('./chatbot_avatar.glb', (gltf) => {
                 avatar = gltf.scene;
                 scene.add(avatar);
