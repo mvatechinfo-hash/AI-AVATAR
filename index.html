@@ -183,6 +183,8 @@
         const chatUiContainer = document.getElementById('chat-ui');
         const chatHistory = document.getElementById('chat-history');
 
+        let canvasContainer;
+
         const synth = window.speechSynthesis;
         let speechRecognition;
         let isListening = false;
@@ -192,6 +194,8 @@
         animate();
 
         function init() {
+            canvasContainer = document.getElementById('canvas-container');
+
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x111827);
 
