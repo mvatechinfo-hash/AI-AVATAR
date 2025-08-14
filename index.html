@@ -170,7 +170,6 @@
         // Variables for the specific idle/patrol sequence
         let lastInteractionTime = Date.now();
         let lastPatrolEventTime = Date.now();
-        let idlePatrolState = 'IDLE_30'; 
         const IDLE_TIMEOUT_30 = 30 * 1000;
         const PATROL_DURATION = 30 * 1000;
         const WALK_DURATION = 3 * 1000; 
@@ -226,7 +225,6 @@
                 
                 avatar.position.z = 0;
                 avatar.position.y = 0;
-                avatar.userData = { targetPosition: new THREE.Vector3() };
 
                 findBones(avatar);
 
@@ -327,13 +325,12 @@
                     speechRecognition.stop();
                 } else {
                     reactToInteraction();
-                    const newPosition = new THREE.Vector3(0, 0, 0);
-                    setNewTarget(newPosition, () => {
-                        playAction(animationNames.wave, THREE.LoopOnce);
-                        speakText("I am listening.", () => {
-                            playAction(animationNames.listening, THREE.LoopRepeat);
-                            speechRecognition.start();
-                        });
+                    avatar.position.set(0, 0, 0); // Immediately set position
+                    faceCamera(); // Immediately face the camera
+                    playAction(animationNames.wave, THREE.LoopOnce);
+                    speakText("I am listening.", () => {
+                        playAction(animationNames.listening, THREE.LoopRepeat);
+                        speechRecognition.start();
                     });
                 }
             }
@@ -353,11 +350,12 @@
             resetIdleSequence();
             isMoving = false;
             isTurning = false;
-            faceCamera();
         }
         
         function handleAvatarInteraction() {
             reactToInteraction();
+            avatar.position.set(0, 0, 0); // Immediately set position
+            faceCamera(); // Immediately face the camera
             const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
             playAction(animationNames.wave, THREE.LoopOnce);
             speakText(randomGreeting, () => {
@@ -397,7 +395,7 @@
                 return;
             }
 
-            avatar.userData.targetPosition.copy(newPosition);
+            avatar.userData = { targetPosition: newPosition, onMoveComplete: onCompleteCallback };
             
             const direction = new THREE.Vector3().subVectors(newPosition, avatar.position).normalize();
             targetQuaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
@@ -408,8 +406,6 @@
             isMoving = true;
             playAction(animationNames.walk, THREE.LoopRepeat);
             lastInteractionTime = Date.now();
-            
-            avatar.userData.onMoveComplete = onCompleteCallback;
         }
 
         function faceCamera() {
@@ -435,13 +431,12 @@
         
         function onChatInputFocus() {
             reactToInteraction();
-            const newPosition = new THREE.Vector3(0, 0, 0); // Move to the center of the scene
-            setNewTarget(newPosition, () => {
-                const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-                playAction(animationNames.wave, THREE.LoopOnce);
-                speakText(randomGreeting, () => {
-                    playAction(animationNames.idle, THREE.LoopRepeat);
-                });
+            avatar.position.set(0, 0, 0); // Immediately set position
+            faceCamera(); // Immediately face the camera
+            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+            playAction(animationNames.wave, THREE.LoopOnce);
+            speakText(randomGreeting, () => {
+                playAction(animationNames.idle, THREE.LoopRepeat);
             });
         }
 
@@ -573,10 +568,6 @@
 
         function speakText(text, onEndCallback = null) {
             return new Promise((resolve) => {
-                if (isMoving) {
-                    return;
-                }
-
                 if (synth.speaking) {
                     synth.cancel();
                 }
@@ -637,7 +628,6 @@
         function resetIdleSequence() {
             lastInteractionTime = Date.now();
             lastPatrolEventTime = Date.now();
-            idlePatrolState = 'IDLE_30';
             isMoving = false;
             isTurning = false;
         }
