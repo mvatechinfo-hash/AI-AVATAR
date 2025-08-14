@@ -21,25 +21,6 @@
             display: block;
             touch-action: none;
         }
-        #chat-bubble {
-            position: absolute;
-            bottom: 250px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: white;
-            padding: 10px 15px;
-            border-radius: 15px;
-            max-width: 250px;
-            font-family: sans-serif;
-            display: none;
-            color: #333;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            text-align: center;
-            z-index: 20;
-        }
-        #chat-bubble.show {
-            display: block;
-        }
         .chat-ui-container {
             position: absolute;
             bottom: 20px;
@@ -69,11 +50,6 @@
         <p class="mt-4 text-gray-300">Loading 3D model...</p>
     </div>
 
-    <div id="chat-bubble" class="hidden">
-        <p id="chat-text"></p>
-        <div class="absolute w-4 h-4 bg-white transform rotate-45 -bottom-1.5 left-1/2 -translate-x-1/2"></div>
-    </div>
-
     <div id="chat-ui" class="chat-ui-container hidden">
         <div class="flex w-full space-x-2">
             <input type="text" id="chat-input" placeholder="Type your message..." class="flex-grow p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -100,8 +76,7 @@
         const jawBoneName = 'Jaw'; 
         const rotationLimit = 0.5;
 
-        // CRITICAL: These animation names must EXACTLY match the clips in your GLB file.
-        // Check the console for "Found animations in GLB:" after running the code.
+        // Animation names from user's list.
         const animationNames = {
             idle: 'idle',
             wave: 'wave',
@@ -110,10 +85,10 @@
             thinking: 'think',
             point: 'point',
             nod: 'nod',
-            shake: 'shake', // Updated from 'headShake' to 'shake'
+            shake: 'shake',
             walk: 'walk',
             happy: 'happy',
-            dance: 'dance', // Added new animation
+            dance: 'dance',
         };
 
         let currentAction;
@@ -127,8 +102,6 @@
         let lastInteractionTime = Date.now();
         const IDLE_TIMEOUT = 60 * 1000; // 60 seconds
 
-        const chatBubble = document.getElementById('chat-bubble');
-        const chatText = document.getElementById('chat-text');
         const chatInput = document.getElementById('chat-input');
         const sendButton = document.getElementById('send-button');
         const loadingScreen = document.getElementById('loading-screen');
@@ -172,7 +145,7 @@
                 avatar = gltf.scene;
                 scene.add(avatar);
                 
-                avatar.userData = {};
+                avatar.userData = { isWalking: false, targetPosition: new THREE.Vector3() };
 
                 findBones(avatar);
 
@@ -183,30 +156,12 @@
                     actions[clip.name] = action;
                 });
                 
-                // Initial sequence: Move to front, Wave, Listen, Idle
-                // Step 1: Move the avatar to a home position and make it look at the camera.
-                avatar.position.z = 1.5;
-                avatar.lookAt(camera.position);
-
-                // Step 2: Play the greeting sequence.
-                const greeting = "Hello! How are you today? How may I help you?";
-                
-                // Use a chain of event listeners for seamless transitions
-                playAction(animationNames.wave);
-                mixer.addEventListener('finished', (event) => {
-                    if (event.action === actions[animationNames.wave]) {
-                        playAction(animationNames.listening, THREE.LoopRepeat);
-                        mixer.removeEventListener('finished', onActionFinished);
-                        showChatBubble(greeting);
-                        speakText(greeting);
-                    }
-                });
+                // Initial state: Start with idle animation
+                playAction(animationNames.idle, THREE.LoopRepeat);
 
                 loadingScreen.style.opacity = '0';
                 setTimeout(() => loadingScreen.classList.add('hidden'), 500);
                 chatUiContainer.classList.remove('hidden');
-
-                window.addEventListener('click', onSceneClick);
                 
             },
             (xhr) => {
@@ -248,16 +203,11 @@
         function onChatInputFocus() {
             stopWalking();
             playAction(animationNames.listening, THREE.LoopRepeat);
+            lastInteractionTime = Date.now();
         }
 
         function onChatInputBlur() {
             if (currentAction !== actions[animationNames.talk] && currentAction !== actions[animationNames.thinking]) {
-                playAction(animationNames.idle, THREE.LoopRepeat);
-            }
-        }
-        
-        function onActionFinished(event) {
-             if (event.action === actions[animationNames.wave]) {
                 playAction(animationNames.idle, THREE.LoopRepeat);
             }
         }
@@ -267,7 +217,6 @@
             if (message) {
                 lastInteractionTime = Date.now();
                 chatInput.value = '';
-                showChatBubble("Thinking...");
                 
                 stopWalking();
                 playAction(animationNames.thinking, THREE.LoopRepeat);
@@ -297,7 +246,7 @@
                     if (!response.ok) {
                         if (response.status === 403) {
                             console.error('API call failed with status 403. Check your API key and permissions.');
-                            showChatBubble("I'm sorry, I'm having trouble connecting. Please try again later.");
+                            // No user-facing message, just log to console.
                             return;
                         }
                         if (response.status === 429) {
@@ -324,12 +273,11 @@
                         } else if (lowerCaseText.includes('yes') || lowerCaseText.includes('correct')) {
                             playAction(animationNames.nod);
                         } else if (lowerCaseText.includes('no') || lowerCaseText.includes('incorrect')) {
-                            playAction(animationNames.shake); // Updated from headShake
+                            playAction(animationNames.shake);
                         } else if (lowerCaseText.includes('important') || lowerCaseText.includes('note')) {
                             playAction(animationNames.point);
                         }
-
-                        showChatBubble(responseText);
+                        
                         speakText(responseText);
                     } else {
                         throw new Error("Unexpected API response structure.");
@@ -337,13 +285,11 @@
                     return;
                 } catch (error) {
                     console.error('An error occurred during API call:', error);
-                    showChatBubble("I'm sorry, I couldn't get a response. Please try again.");
                     return;
                 }
             }
             if (retries === maxRetries) {
                 console.error("Max retries reached. API call failed.");
-                showChatBubble("I'm sorry, the service is currently unavailable. Please try again later.");
             }
         }
 
@@ -378,39 +324,6 @@
             });
         }
         
-        function onSceneClick(event) {
-            const raycaster = new THREE.Raycaster();
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            
-            if (avatar) {
-                const avatarIntersects = raycaster.intersectObject(avatar, true);
-                if (avatarIntersects.length > 0) {
-                    playAction(animationNames.wave);
-                    const greeting = "Hello! What can I do for you?";
-                    showChatBubble(greeting);
-                    speakText(greeting);
-                    lastInteractionTime = Date.now();
-                    return;
-                }
-            }
-            
-            const groundPlane = scene.children.find(obj => obj.geometry instanceof THREE.PlaneGeometry);
-            const groundIntersects = raycaster.intersectObject(groundPlane);
-            if (groundIntersects.length > 0) {
-                const targetPosition = groundIntersects[0].point;
-                if (avatar) {
-                    avatar.lookAt(targetPosition.x, avatar.position.y, targetPosition.z);
-                    playAction(animationNames.walk, THREE.LoopRepeat);
-                    avatar.userData.targetPosition = targetPosition;
-                    avatar.userData.isWalking = true;
-                    isPatrolling = false;
-                    lastInteractionTime = Date.now();
-                }
-            }
-        }
-
         function stopWalking() {
             if (avatar && avatar.userData.isWalking) {
                 avatar.userData.isWalking = false;
@@ -479,7 +392,8 @@
                 if (!avatar.userData.isWalking) {
                     playAction(animationNames.walk, THREE.LoopRepeat);
                     avatar.userData.isWalking = true;
-                    avatar.userData.targetPosition = new THREE.Vector3(patrolLimit * patrolDirection, avatar.position.y, avatar.position.z);
+                    // Avatar walks forward then turns around
+                    avatar.userData.targetPosition.set(0, avatar.position.y, avatar.position.z + patrolLimit * patrolDirection);
                     avatar.lookAt(avatar.userData.targetPosition);
                 }
             }
@@ -491,7 +405,8 @@
                 if (avatar.position.distanceTo(avatar.userData.targetPosition) < 0.1) {
                     avatar.userData.isWalking = false;
                     playAction(animationNames.idle, THREE.LoopRepeat);
-                    patrolDirection *= -1;
+                    patrolDirection *= -1; // Reverse direction
+                    avatar.rotateY(Math.PI); // Turn the avatar around
                 }
             }
 
@@ -501,19 +416,11 @@
 
         function checkIdleState() {
             if (Date.now() - lastInteractionTime > IDLE_TIMEOUT) {
-                if (currentAction === actions[animationNames.idle]) {
+                if (currentAction === actions[animationNames.idle] && !isPatrolling) {
                     isPatrolling = true;
                     lastInteractionTime = Date.now(); // Reset the timer to avoid re-triggering immediately
                 }
             }
-        }
-
-        function showChatBubble(text) {
-            chatText.innerText = text;
-            chatBubble.classList.add('show');
-            setTimeout(() => {
-                chatBubble.classList.remove('show');
-            }, 5000);
         }
     </script>
 </body>
