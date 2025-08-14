@@ -1,88 +1,257 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Chatbot Avatar</title>
-  <style>
-    body { margin: 0; background: #202020; overflow: hidden; }
-    #chat-bubble {
-      position: absolute;
-      bottom: 150px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: white;
-      padding: 10px 15px;
-      border-radius: 15px;
-      max-width: 250px;
-      font-family: sans-serif;
-      display: none;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-AVATAR</title>
+    <!--
+        We are using the Inter font for a clean, modern look.
+        The Tailwind CSS script provides easy-to-use utility classes for styling.
+        The Tailwind message about production is a warning, not an error, so your code is safe to run.
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            background: #111827;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+        #chat-bubble {
+            position: absolute;
+            bottom: 150px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 10px 15px;
+            border-radius: 15px;
+            max-width: 250px;
+            font-family: sans-serif;
+            display: none;
+            color: #333;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+    </style>
+    <!--
+        --- New approach using an importmap for module resolution ---
+        This tells the browser exactly where to find the 'three' and 'three/addons'
+        modules, which should resolve the import error once and for all.
+    -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+            }
+        }
+    </script>
 </head>
-<body>
-  <div id="chat-bubble">Hi there! 👋</div>
+<body class="bg-gray-900 text-white relative">
+    
+    <!-- This div will contain our 3D canvas -->
+    <div id="canvas-container" class="fixed inset-0 z-0"></div>
 
-  <script type="module">
-    import * as THREE from 'https://unpkg.com/three@0.165.0/build/three.module.js';
-    import { GLTFLoader } from 'https://unpkg.com/three@0.165.0/examples/jsm/loaders/GLTFLoader.js';
+    <!-- This is the loading screen overlay -->
+    <div id="loading-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 transition-opacity duration-500">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+        <p class="mt-4 text-gray-300">Loading 3D model...</p>
+    </div>
 
-    let scene, camera, renderer, avatar, mixer;
-    const clock = new THREE.Clock();
+    <!-- This is the UI for the chat bubble and input -->
+    <div class="absolute bottom-5 left-1/2 -translate-x-1/2 p-4 w-full max-w-sm z-10 flex flex-col items-center">
+        <!-- Chat Bubble -->
+        <div id="chat-bubble" class="bg-white text-gray-800 p-3 rounded-2xl shadow-lg mb-4 hidden relative">
+            <p id="chat-text">Hello! I'm your assistant.</p>
+            <div class="absolute w-4 h-4 bg-white transform rotate-45 -bottom-1.5 left-1/2 -translate-x-1/2"></div>
+        </div>
+        
+        <!-- Chat Input -->
+        <div class="flex w-full space-x-2">
+            <input type="text" id="chat-input" placeholder="Type your message..." class="flex-grow p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button id="send-button" class="bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-md">
+                Send
+            </button>
+        </div>
+    </div>
 
-    init();
-    animate();
+    <!--
+        --- CDN Imports for Three.js and GLTFLoader ---
+        Now that the importmap is set up, the import statements are much cleaner.
+    -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        // --- End CDN Imports ---
 
-    function init() {
-      scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x202020);
+        let scene, camera, renderer, avatar, mixer;
+        const clock = new THREE.Clock();
+        
+        // New variables for eye tracking
+        let leftEye, rightEye;
+        const mouse = new THREE.Vector2();
+        const lookAtTarget = new THREE.Vector3();
+        const headBoneName = 'HeadTop_End_end'; // Replace with the actual name of your head bone if different
+        const leftEyeBoneName = 'Eye_Left'; // Assuming a bone name for the left eye
+        const rightEyeBoneName = 'Eye_Right'; // Assuming a bone name for the right eye
+        const rotationLimit = 0.5; // Limits how far the eyes can turn
 
-      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-      camera.position.set(0, 1.6, 3);
+        const chatBubble = document.getElementById('chat-bubble');
+        const chatText = document.getElementById('chat-text');
+        const chatInput = document.getElementById('chat-input');
+        const sendButton = document.getElementById('send-button');
+        const loadingScreen = document.getElementById('loading-screen');
+        const canvasContainer = document.getElementById('canvas-container');
 
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      document.body.appendChild(renderer.domElement);
+        init();
+        animate();
 
-      const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
-      scene.add(light);
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111827);
 
-      const loader = new GLTFLoader();
-      loader.load('./chatbot_avatar.glb', (gltf) => {
-        avatar = gltf.scene;
-        scene.add(avatar);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 1.6, 2.5);
 
-        mixer = new THREE.AnimationMixer(avatar);
-        if (gltf.animations.length > 0) {
-          const action = mixer.clipAction(gltf.animations[0]);
-          action.play();
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            canvasContainer.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            directionalLight.position.set(1, 2, 3).normalize();
+            scene.add(directionalLight);
+
+            const loader = new GLTFLoader();
+            // This is the important change: we are now loading your local GLB file.
+            loader.load('./chatbot_avatar.glb', (gltf) => {
+                avatar = gltf.scene;
+                scene.add(avatar);
+
+                // --- FIX: Rotate the model to face forward correctly ---
+                // Many models from Blender are oriented with +Y up.
+                // Three.js and GLTF often expect +Z up. This rotates the model to correct the orientation.
+                avatar.rotation.x = Math.PI / 2; // Rotate 90 degrees on the X-axis
+                
+                // Find the eye and head bones for tracking
+                findBones(avatar);
+
+                // Hide loading screen and show the chat UI
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => loadingScreen.classList.add('hidden'), 500);
+
+                // Set up animation if available
+                mixer = new THREE.AnimationMixer(avatar);
+                if (gltf.animations.length > 0) {
+                    const action = mixer.clipAction(gltf.animations[0]);
+                    action.play();
+                }
+
+                // Show an initial chat bubble
+                showChatBubble("Hello! I'm your assistant.");
+            },
+            (xhr) => {
+                // This is a progress callback for the loader
+                const percent = Math.round((xhr.loaded / xhr.total) * 100);
+                document.querySelector('#loading-screen p').innerText = `Loading: ${percent}%`;
+            },
+            (error) => {
+                console.error('An error occurred while loading the GLTF model:', error);
+                document.querySelector('#loading-screen p').innerText = 'Failed to load model.';
+            });
+
+            window.addEventListener('resize', onWindowResize);
+            // Add a mousemove listener for eye tracking
+            window.addEventListener('mousemove', onMouseMove);
+
+            // Chat input and button logic
+            sendButton.addEventListener('click', () => {
+                const message = chatInput.value.trim();
+                if (message) {
+                    showChatBubble(message);
+                    chatInput.value = ''; // Clear input field
+                }
+            });
+
+            // Allow sending a message by pressing Enter
+            chatInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    sendButton.click();
+                }
+            });
+        }
+        
+        function findBones(model) {
+            // Traverse the model to find the specific bones for eye tracking
+            model.traverse((object) => {
+                if (object.isBone && object.name === leftEyeBoneName) {
+                    leftEye = object;
+                }
+                if (object.isBone && object.name === rightEyeBoneName) {
+                    rightEye = object;
+                }
+            });
+        }
+        
+        function onMouseMove(event) {
+            // Update the mouse position in a normalized range (-1 to +1)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         }
 
-        showChatBubble("Hello! I'm your assistant.");
-      });
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
 
-      window.addEventListener('resize', onWindowResize);
-    }
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Eye tracking logic
+            if (leftEye && rightEye) {
+                // Calculate the target position based on the mouse
+                lookAtTarget.set(mouse.x, mouse.y, 1).unproject(camera);
+                
+                // Get the current world positions of the eyes
+                const leftEyePos = new THREE.Vector3().setFromMatrixPosition(leftEye.matrixWorld);
+                const rightEyePos = new THREE.Vector3().setFromMatrixPosition(rightEye.matrixWorld);
+                
+                // Calculate the direction vectors from the eyes to the target
+                const leftDir = new THREE.Vector3().subVectors(lookAtTarget, leftEyePos).normalize();
+                const rightDir = new THREE.Vector3().subVectors(lookAtTarget, rightEyePos).normalize();
+                
+                // Use a lookAt function to rotate the eyes, but limit the rotation
+                const leftEyeQuaternion = new THREE.Quaternion().setFromRotationMatrix(
+                    new THREE.Matrix4().lookAt(leftEyePos, lookAtTarget, leftEye.up)
+                );
+                const rightEyeQuaternion = new THREE.Quaternion().setFromRotationMatrix(
+                    new THREE.Matrix4().lookAt(rightEyePos, lookAtTarget, rightEye.up)
+                );
+                
+                // Apply the rotations, but limit them to prevent unnatural movement
+                leftEye.quaternion.slerp(leftEyeQuaternion, rotationLimit);
+                rightEye.quaternion.slerp(rightEyeQuaternion, rotationLimit);
+            }
+            
+            if (mixer) mixer.update(clock.getDelta());
+            renderer.render(scene, camera);
+        }
 
-    function onWindowResize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-
-    function animate() {
-      requestAnimationFrame(animate);
-      if (mixer) mixer.update(clock.getDelta());
-      renderer.render(scene, camera);
-    }
-
-    function showChatBubble(text) {
-      const bubble = document.getElementById('chat-bubble');
-      bubble.innerText = text;
-      bubble.style.display = 'block';
-      setTimeout(() => {
-        bubble.style.display = 'none';
-      }, 3000);
-    }
-  </script>
+        function showChatBubble(text) {
+            chatText.innerText = text;
+            chatBubble.classList.remove('hidden');
+            setTimeout(() => {
+                chatBubble.classList.add('hidden');
+            }, 5000);
+        }
+    </script>
 </body>
 </html>
