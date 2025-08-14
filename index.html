@@ -6,6 +6,7 @@
     <title>AI-AVATAR</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
         body {
@@ -24,8 +25,8 @@
         .chat-ui-container {
             position: absolute;
             bottom: 20px;
-            right: 20px; /* Moved to the right */
-            top: 20px; /* Aligned to the top */
+            right: 20px;
+            top: 20px;
             padding: 1rem;
             width: 100%;
             max-width: 400px;
@@ -52,16 +53,29 @@
             line-height: 1.5;
         }
         .user-message {
-            background-color: #3b82f6; /* Blue for user */
+            background-color: #3b82f6;
             color: white;
             align-self: flex-end;
             margin-left: auto;
         }
         .bot-message {
-            background-color: #4b5563; /* Gray for bot */
+            background-color: #4b5563;
             color: white;
             align-self: flex-start;
             margin-right: auto;
+        }
+        .listening-button {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 rgba(255, 255, 255, 0.7);
+            }
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 0 20px rgba(255, 255, 255, 1);
+            }
         }
     </style>
     <script type="importmap">
@@ -89,6 +103,9 @@
             <button id="send-button" class="bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-md">
                 Send
             </button>
+            <button id="mic-button" class="bg-gray-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-gray-700 transition-colors duration-200 shadow-md flex items-center justify-center">
+                <i class="fas fa-microphone"></i>
+            </button>
         </div>
     </div>
     
@@ -98,6 +115,8 @@
 
         let scene, camera, renderer, avatar, mixer;
         const clock = new THREE.Clock();
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
         
         let leftEye, rightEye, headBone, jawBone;
         const mouse = new THREE.Vector2();
@@ -124,6 +143,13 @@
             dance: 'dance',
         };
 
+        const greetings = [
+            "Hello there!",
+            "Hi, what can I do for you?",
+            "Hey, nice to see you!",
+            "Greetings! Feel free to ask me anything."
+        ];
+
         let currentAction;
         const actions = {};
         
@@ -133,16 +159,19 @@
         const patrolLimit = 1.5;
 
         let lastInteractionTime = Date.now();
-        const IDLE_TIMEOUT = 60 * 1000; // 60 seconds
+        const IDLE_TIMEOUT = 10 * 1000; // Reduced to 10 seconds
 
         const chatInput = document.getElementById('chat-input');
         const sendButton = document.getElementById('send-button');
+        const micButton = document.getElementById('mic-button');
         const loadingScreen = document.getElementById('loading-screen');
         const chatUiContainer = document.getElementById('chat-ui');
         const canvasContainer = document.getElementById('canvas-container');
         const chatHistory = document.getElementById('chat-history');
 
         const synth = window.speechSynthesis;
+        let speechRecognition;
+        let isListening = false;
 
         init();
         animate();
@@ -223,8 +252,93 @@
                     onSendMessage();
                 }
             });
+            renderer.domElement.addEventListener('mousedown', onAvatarClick, false);
+            micButton.addEventListener('click', toggleSpeechRecognition);
+            initSpeechRecognition();
         }
         
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                speechRecognition = new SpeechRecognition();
+                speechRecognition.continuous = false; // Listen for a single continuous phrase
+                speechRecognition.interimResults = false;
+                speechRecognition.lang = 'en-US';
+
+                speechRecognition.onstart = () => {
+                    isListening = true;
+                    micButton.classList.add('listening-button');
+                    console.log('Speech recognition started...');
+                };
+
+                speechRecognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    chatInput.value = transcript;
+                    micButton.classList.remove('listening-button');
+                    isListening = false;
+                    console.log('Speech recognition result:', transcript);
+                };
+
+                speechRecognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    micButton.classList.remove('listening-button');
+                    isListening = false;
+                };
+
+                speechRecognition.onend = () => {
+                    micButton.classList.remove('listening-button');
+                    isListening = false;
+                    console.log('Speech recognition ended.');
+                };
+            } else {
+                console.warn('Speech Recognition API is not supported in this browser.');
+                micButton.style.display = 'none'; // Hide button if not supported
+            }
+        }
+
+        function toggleSpeechRecognition() {
+            if (isListening) {
+                speechRecognition.stop();
+            } else {
+                try {
+                    speechRecognition.start();
+                } catch (error) {
+                    console.error('Error starting speech recognition:', error);
+                }
+            }
+        }
+
+        function onAvatarClick(event) {
+            // Calculate mouse position in normalized device coordinates (-1 to +1)
+            pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+            pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            // Update the picking ray with the camera and mouse position
+            raycaster.setFromCamera(pointer, camera);
+
+            // Check for intersections
+            const intersects = raycaster.intersectObject(avatar, true);
+
+            if (intersects.length > 0) {
+                console.log('Avatar clicked!');
+                stopWalking();
+                
+                const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+                
+                // Play the wave animation and then immediately speak
+                playAction(animationNames.wave, THREE.LoopOnce);
+                
+                // Wait for the wave animation to finish before speaking.
+                // We use a setTimeout with the duration of the animation to ensure a proper sequence.
+                const waveAnimationDuration = actions[animationNames.wave].getClip().duration;
+                setTimeout(() => {
+                    speakText(randomGreeting);
+                }, waveAnimationDuration * 1000);
+                
+                lastInteractionTime = Date.now();
+            }
+        }
+
         function playAction(name, loop = THREE.LoopOnce) {
             if (avatar && actions[name]) {
                 const newAction = actions[name];
@@ -368,6 +482,11 @@
         function speakText(text) {
             return new Promise((resolve) => {
                 lastInteractionTime = Date.now();
+                // Don't speak if avatar is walking
+                if (avatar.userData.isWalking) {
+                    return;
+                }
+
                 if (synth.speaking) {
                     synth.cancel();
                 }
