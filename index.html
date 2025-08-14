@@ -159,7 +159,7 @@
         
         // Idle patrol behavior variables
         let patrolDirection = 1;
-        const patrolSpeed = 0.01; // Increased speed for better visibility
+        const patrolSpeed = 0.01; 
         const patrolLimit = 1.5;
         let isMoving = false;
         let isTurning = false;
@@ -170,10 +170,10 @@
         // Variables for the specific idle/patrol sequence
         let lastInteractionTime = Date.now();
         let lastPatrolEventTime = Date.now();
-        let idlePatrolState = 'IDLE_30'; // 'IDLE_30', 'WALK_3', 'IDLE_5'
+        let idlePatrolState = 'IDLE_30'; 
         const IDLE_TIMEOUT_30 = 30 * 1000;
+        const PATROL_DURATION = 30 * 1000;
         const WALK_DURATION = 3 * 1000; 
-        const IDLE_TIMEOUT_5 = 5 * 1000;
 
         const chatInput = document.getElementById('chat-input');
         const sendButton = document.getElementById('send-button');
@@ -224,7 +224,6 @@
                 scene.add(avatar);
                 console.log("Avatar loaded and added to scene.");
                 
-                // Position the avatar correctly
                 avatar.position.z = 0;
                 avatar.position.y = 0;
                 avatar.userData = { targetPosition: new THREE.Vector3() };
@@ -238,15 +237,17 @@
                     actions[clip.name] = action;
                 });
                 
-                // Initial behavior: wave, speak, then idle
+                playAction(animationNames.idle, THREE.LoopRepeat);
                 faceCamera();
-                playAction(animationNames.wave, THREE.LoopOnce);
-                const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-                speakText(randomGreeting);
-                
-                loadingScreen.style.opacity = '0';
-                setTimeout(() => loadingScreen.classList.add('hidden'), 500);
-                chatUiContainer.classList.remove('hidden');
+
+                setTimeout(() => {
+                    const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+                    speakText(randomGreeting);
+                    
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => loadingScreen.classList.add('hidden'), 500);
+                    chatUiContainer.classList.remove('hidden');
+                }, 500);
                 
             },
             (xhr) => {
@@ -286,7 +287,6 @@
                     isListening = true;
                     micButton.classList.add('listening-button');
                     console.log('Speech recognition started...');
-                    // User requested listening action and facing the front
                     reactToInteraction();
                     playAction(animationNames.listening, THREE.LoopRepeat);
                 };
@@ -309,8 +309,6 @@
                 speechRecognition.onend = () => {
                     micButton.classList.remove('listening-button');
                     isListening = false;
-                    console.log('Speech recognition ended.');
-                    // Only switch back to idle if we're still in the listening state
                     if (currentAction === actions[animationNames.listening]) {
                         playAction(animationNames.idle, THREE.LoopRepeat);
                         resetIdleSequence();
@@ -335,20 +333,18 @@
         function onDanceButtonClick() {
             if (!avatar) return;
             resetIdleSequence();
+            // Don't reset position on interaction, this was causing the teleporting bug
             isMoving = false;
             isTurning = false;
-            avatar.position.set(0, 0, 0);
             faceCamera();
             playAction(animationNames.dance, THREE.LoopRepeat);
         }
 
-        // New function to handle all avatar reactions to user interaction
         function reactToInteraction() {
             if (!avatar) return;
             resetIdleSequence();
             isMoving = false;
             isTurning = false;
-            avatar.position.set(0, 0, 0);
             faceCamera();
             playAction(animationNames.idle, THREE.LoopRepeat);
         }
@@ -376,13 +372,14 @@
             if (raycaster.ray.intersectPlane(groundPlane, intersects)) {
                 console.log('Ground clicked at:', intersects);
                 resetIdleSequence();
-                setNewTarget(intersects); // Always use smooth turn now
+                setNewTarget(intersects);
             }
         }
         
         function setNewTarget(newPosition) {
             if (!avatar) return;
             
+            // This is the check for if we're already at the target
             if (avatar.position.distanceTo(newPosition) < 0.1) {
                 isMoving = false;
                 playAction(animationNames.idle, THREE.LoopRepeat);
@@ -428,7 +425,6 @@
         }
 
         function onChatInputBlur() {
-            // Only switch back to idle if we're not currently talking or thinking
             if (currentAction !== actions[animationNames.talk] && currentAction !== actions[animationNames.thinking]) {
                 playAction(animationNames.idle, THREE.LoopRepeat);
                 resetIdleSequence();
@@ -438,7 +434,7 @@
         function onSendMessage() {
             const message = chatInput.value.trim();
             if (message) {
-                resetIdleSequence();
+                reactToInteraction(); // Use the general interaction reset
                 chatInput.value = '';
                 
                 appendMessage(message, 'user');
@@ -461,8 +457,6 @@
         }
         
         async function generateResponseFromAPI(userPrompt) {
-            // !!! IMPORTANT !!!
-            // The user has provided an API key. This line has been updated.
             const apiKey = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
             const chatHistoryContent = [];
@@ -553,7 +547,7 @@
 
         function speakText(text) {
             return new Promise((resolve) => {
-                resetIdleSequence();
+                reactToInteraction(); // Use the general interaction reset
                 if (isMoving) {
                     return;
                 }
@@ -661,17 +655,18 @@
                         avatar.quaternion.slerp(targetQuaternion, turnProgress);
                         if (turnProgress >= 1) {
                             isTurning = false;
+                            // Now that the turn is complete, start walking
+                            playAction(animationNames.walk, THREE.LoopRepeat);
                         }
                     } else {
-                        avatar.quaternion.slerp(targetQuaternion, 0.05); // Smoother turn during movement
+                        avatar.quaternion.slerp(targetQuaternion, 0.05); 
                     }
                     
                     const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
                     avatar.position.addScaledVector(direction, patrolSpeed);
                 } else {
                     isMoving = false;
-                    playAction(animationNames.idle, THREE.LoopRepeat);
-                    // Reset the patrol event time so the next state change can begin
+                    // When the movement is finished, reset the patrol event time
                     lastPatrolEventTime = Date.now();
                 }
             }
@@ -680,7 +675,7 @@
             renderer.render(scene, camera);
         }
 
-        // New function to manage the idle/patrol sequence
+        // The core logic for the new patrol sequence
         function checkIdlePatrolSequence() {
             const elapsedTimeSinceLastInteraction = Date.now() - lastInteractionTime;
             const elapsedTimeSinceLastPatrolEvent = Date.now() - lastPatrolEventTime;
@@ -690,40 +685,39 @@
                 return;
             }
 
-            if (isMoving || isTurning) {
-                // Don't interrupt manual movement or turning
-                return;
-            }
+            // Only enter patrol logic if not currently performing an action
+            if (currentAction === actions[animationNames.idle] || currentAction === actions[animationNames.walk]) {
+                if (elapsedTimeSinceLastInteraction > IDLE_TIMEOUT_30 + PATROL_DURATION) {
+                    // We have completed a full patrol cycle, reset to idle
+                    playAction(animationNames.idle, THREE.LoopRepeat);
+                    resetIdleSequence();
+                    return;
+                }
 
-            switch (idlePatrolState) {
-                case 'IDLE_30':
-                    if (elapsedTimeSinceLastPatrolEvent > IDLE_TIMEOUT_30) {
-                        // Time to start the first patrol walk
-                        idlePatrolState = 'WALK_3';
-                        lastPatrolEventTime = Date.now();
-                        patrolDirection *= -1; // Change direction
-                        const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
-                        setNewTarget(newPatrolPosition);
+                // Check for patrol events
+                const totalPatrolTime = Date.now() - (lastInteractionTime + IDLE_TIMEOUT_30);
+                const isWalking = (Math.floor(totalPatrolTime / (WALK_DURATION + turnDuration)) % 2 === 0);
+
+                if (isWalking) {
+                    // Walk for 3 seconds
+                    if (currentAction !== actions[animationNames.walk]) {
+                        playAction(animationNames.walk, THREE.LoopRepeat);
                     }
-                    break;
-                case 'WALK_3':
-                    if (elapsedTimeSinceLastPatrolEvent > WALK_DURATION) {
-                        // Time to idle for 5 seconds
-                        idlePatrolState = 'IDLE_5';
-                        lastPatrolEventTime = Date.now();
-                        playAction(animationNames.idle, THREE.LoopRepeat);
+                    const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
+                    setNewTarget(newPatrolPosition);
+
+                } else {
+                    // Turn for 0.5 seconds and then walk again
+                    if (currentAction === actions[animationNames.walk]) {
+                         // Stop walking, start turning
+                         isMoving = true;
+                         isTurning = true;
+                         turnStartTime = Date.now();
+                         patrolDirection *= -1;
+                         const direction = new THREE.Vector3(patrolDirection, 0, 0).normalize();
+                         targetQuaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
                     }
-                    break;
-                case 'IDLE_5':
-                    if (elapsedTimeSinceLastPatrolEvent > IDLE_TIMEOUT_5) {
-                        // Time to start patrolling again, changing direction
-                        idlePatrolState = 'WALK_3';
-                        lastPatrolEventTime = Date.now();
-                        patrolDirection *= -1;
-                        const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
-                        setNewTarget(newPatrolPosition);
-                    }
-                    break;
+                }
             }
         }
     </script>
