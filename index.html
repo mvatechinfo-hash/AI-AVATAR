@@ -98,17 +98,19 @@
 
     <div id="chat-ui" class="chat-ui-container hidden">
         <div id="chat-history" class="mb-4"></div>
-        <div class="flex w-full space-x-2">
+        <div class="flex flex-col md:flex-row w-full space-y-2 md:space-y-0 md:space-x-2">
             <input type="text" id="chat-input" placeholder="Type your message..." class="flex-grow p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <button id="send-button" class="bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-md">
-                Send
-            </button>
-            <button id="mic-button" class="bg-gray-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-gray-700 transition-colors duration-200 shadow-md flex items-center justify-center">
-                <i class="fas fa-microphone"></i>
-            </button>
-            <button id="dance-button" class="bg-purple-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-purple-700 transition-colors duration-200 shadow-md flex items-center justify-center">
-                <i class="fas fa-music"></i>
-            </button>
+            <div class="flex space-x-2 w-full md:w-auto">
+                <button id="send-button" class="flex-grow bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-md">
+                    Send
+                </button>
+                <button id="mic-button" class="flex-grow bg-gray-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-gray-700 transition-colors duration-200 shadow-md flex items-center justify-center">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <button id="dance-button" class="flex-grow bg-purple-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-purple-700 transition-colors duration-200 shadow-md flex items-center justify-center">
+                    <i class="fas fa-music"></i>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -162,12 +164,12 @@
         const patrolLimit = 1.5;
         let isMoving = false;
         let isTurning = false;
+        let isPatrolling = false; // New state to prevent walk loops
         let targetQuaternion = new THREE.Quaternion();
         const turnDuration = 500;
         let turnStartTime = 0;
 
         let lastInteractionTime = Date.now();
-        let lastPatrolEventTime = Date.now();
         const IDLE_TIMEOUT_30 = 30 * 1000;
         let lastMouseMovementTime = Date.now();
         const MOUSE_IDLE_TIMEOUT = 5000;
@@ -239,9 +241,6 @@
                 
                 startGreetingSequence();
                 
-                // We no longer need to listen for animation finished for the walk loop
-                // mixer.addEventListener('finished', onAnimationFinished);
-
                 faceCamera();
 
                 setTimeout(() => {
@@ -371,6 +370,7 @@
             resetIdleSequence();
             isMoving = false;
             isTurning = false;
+            isPatrolling = false; // Stop patrol on user interaction
             faceCamera();
             playAction(animationNames.dance, THREE.LoopRepeat);
         }
@@ -380,6 +380,7 @@
             resetIdleSequence();
             isMoving = false;
             isTurning = false;
+            isPatrolling = false; // Stop patrol on user interaction
         }
         
         function handleAvatarInteraction() {
@@ -409,6 +410,7 @@
             if (raycaster.ray.intersectPlane(groundPlane, intersects)) {
                 console.log('Ground clicked at:', intersects);
                 resetIdleSequence();
+                isPatrolling = false; // Stop patrol on user interaction
                 setNewTarget(intersects);
             }
         }
@@ -432,7 +434,7 @@
 
             isMoving = true;
             playAction(animationNames.walk, THREE.LoopRepeat);
-            lastInteractionTime = Date.now();
+            lastInteractionTime = Date.Now();
         }
 
         function faceCamera() {
@@ -488,6 +490,7 @@
                 appendMessage(message, 'user');
 
                 isMoving = false;
+                isPatrolling = false; // Stop patrol on user interaction
                 faceCamera();
                 playAction(animationNames.thinking, THREE.LoopRepeat);
 
@@ -682,6 +685,7 @@
             lastInteractionTime = Date.now();
             isMoving = false;
             isTurning = false;
+            isPatrolling = false; // Stop patrol on user interaction
         }
 
         function animate() {
@@ -733,7 +737,6 @@
 
             if (isMoving) {
                 const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
-                // Log distance to the console for debugging
                 console.log('Distance to target:', distance.toFixed(3), 'isMoving:', isMoving);
 
                 if (distance > 0.05) {
@@ -751,12 +754,12 @@
                     const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
                     avatar.position.addScaledVector(direction, patrolSpeed);
                 } else {
-                    // Snap to the target position to ensure the animation stops
                     avatar.position.copy(avatar.userData.targetPosition);
                     console.log('Avatar reached target. Snapping position and stopping.');
                     isMoving = false;
+                    isPatrolling = false; // Stop patrol when destination is reached
                     playAction(animationNames.idle, THREE.LoopRepeat);
-                    lastPatrolEventTime = Date.now();
+                    lastInteractionTime = Date.now();
                 }
             }
             
@@ -765,16 +768,15 @@
         }
 
         function checkIdlePatrolSequence() {
-             // Only start a new patrol if the avatar is not already moving or busy with another animation
-             if (!isMoving && currentAction && currentAction.getClip().name === animationNames.idle) {
+             if (!isMoving && !isPatrolling) {
                 const elapsedTimeSinceIdle = Date.now() - lastInteractionTime;
-
-                if (elapsedTimeSinceIdle > IDLE_TIMEOUT_30) {
+                if (elapsedTimeSinceIdle > IDLE_TIMEOUT_30 && currentAction && currentAction.getClip().name === animationNames.idle) {
                     console.log('Idle timeout triggered. Starting new patrol.');
                     patrolDirection *= -1; 
                     const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
+                    isPatrolling = true;
                     setNewTarget(newPatrolPosition);
-                    lastInteractionTime = Date.now(); // Reset the timer
+                    lastInteractionTime = Date.now();
                  }
             }
         }
