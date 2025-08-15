@@ -172,8 +172,8 @@
         let isPlayingDance = false;
 
         let patrolDirection = 1;
-        const patrolSpeed = 0.008;
-        const patrolLimit = 1.5;
+        const patrolSpeed = 0.005;
+        const patrolLimit = 1;
         let isMoving = false;
         let isTurning = false;
         let isPatrolling = false;
@@ -430,15 +430,13 @@
                 };
 
                 speechRecognition.onend = () => {
-                    // This is the key change: Add a short delay before returning to idle.
-                    // This gives the user time to start speaking and prevents the listening
-                    // animation from being cut off instantly.
+            
                     setTimeout(() => {
                         micButton.classList.remove('listening-button');
                         isListening = false;
                         playAction(getRandomAnimation(animationNames.active_idle), THREE.LoopRepeat);
                         reactToInteraction(); 
-                    }, 500); // 500ms delay
+                    }, 500);
                 };
             } else {
                 console.warn('Speech Recognition API is not supported in this browser. The microphone button will be hidden.');
@@ -726,7 +724,7 @@
                 if (synth.speaking) {
                     synth.cancel();
                 }
-                // Using a regular expression to remove any instance of one or more asterisks.
+             
                 const sanitizedText = text.replace(/\*+/g, '');
                 
                 const utterance = new SpeechSynthesisUtterance(sanitizedText);
@@ -901,4 +899,5 @@
     </script>
 </body>
 </html>
+
 
