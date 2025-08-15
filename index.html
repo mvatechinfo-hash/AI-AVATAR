@@ -1,805 +1,703 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-AVATAR</title>
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { MeshLine, MeshLineMaterial } from 'meshline';
+import * as Tone from 'tone';
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            margin: 0;
-            background: #111827;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+// Main App component
+export default function App() {
+    // Refs for DOM elements and Three.js objects
+    const mountRef = useRef(null);
+    const avatarRef = useRef(null);
+    const mixerRef = useRef(null);
+    const clockRef = useRef(new THREE.Clock());
+    const animationsRef = useRef({});
+    const lookAtMouseRef = useRef(false);
+    const audioSynthRef = useRef(null);
+    const audioLoopRef = useRef(null);
+    const isDancingRef = useRef(false);
+
+    // State for UI elements and application logic
+    const [chatHistory, setChatHistory] = useState([]);
+    const [inputValue, setInputValue] = useState('');
+    const [isThinking, setIsThinking] = useState(false);
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [isListening, setIsListening] = useState(false);
+    const [isAvatarLoaded, setIsAvatarLoaded] = useState(false);
+    const [isMoving, setIsMoving] = useState(false);
+    const [message, setMessage] = useState(null);
+
+    // Three.js Scene, Camera, and Renderer
+    const scene = useRef(new THREE.Scene());
+    const camera = useRef(new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000));
+    const renderer = useRef(new THREE.WebGLRenderer({ antialiasing: true }));
+    const controls = useRef(null);
+
+    // Raycaster for mouse interactions
+    const raycaster = useRef(new THREE.Raycaster());
+    const mouse = useRef(new THREE.Vector2());
+
+    // Auto-patrol variables
+    const lastInteractionTimeRef = useRef(Date.now());
+    const patrolTimeoutRef = useRef(null);
+    const idleTimeoutRef = useRef(null);
+    const patrolIntervalRef = useRef(null);
+    const isIdle2Ref = useRef(true);
+
+    // Animation names from the GLB file
+    const animationNames = {
+        idle: 'idle',
+        idle2: 'idle2',
+        walk: 'walk',
+        talk: 'talk',
+        wave: 'wave',
+        happy: 'happy',
+        nod: 'nod',
+        shake: 'shake',
+        point: 'point',
+        dance: 'dance'
+    };
+
+    // Global variable to keep track of the current animation action
+    let currentAction = null;
+
+    // A function to smoothly transition between animations
+    const playAction = useCallback((name, loopMode = THREE.LoopOnce, clampWhenFinished = true, weight = 1.0) => {
+        // Stop the current action gracefully
+        if (currentAction) {
+            currentAction.fadeOut(0.5);
         }
-        canvas {
-            display: block;
-            touch-action: none;
-        }
-        .chat-ui-container {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            top: 20px;
-            padding: 1rem;
-            width: 100%;
-            max-width: 400px;
-            z-index: 10;
-            display: flex;
-            flex-direction: column;
-            background-color: rgba(31, 41, 55, 0.8);
-            border-radius: 1rem;
-            backdrop-filter: blur(5px);
-        }
-        #chat-history {
-            flex-grow: 1;
-            overflow-y: auto;
-            padding: 1rem;
-            border-radius: 0.75rem;
-            background-color: #1f2937;
-            margin-bottom: 1rem;
-        }
-        .chat-message {
-            margin-bottom: 1rem;
-            max-width: 80%;
-            padding: 0.75rem 1rem;
-            border-radius: 1.5rem;
-            line-height: 1.5;
-        }
-        .user-message {
-            background-color: #3b82f6;
-            color: white;
-            align-self: flex-end;
-            margin-left: auto;
-        }
-        .bot-message {
-            background-color: #4b5563;
-            color: white;
-            align-self: flex-start;
-            margin-right: auto;
-        }
-        .listening-button {
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% {
-                transform: scale(1);
-                box-shadow: 0 0 0 rgba(255, 255, 255, 0.7);
-            }
-            50% {
-                transform: scale(1.1);
-                box-shadow: 0 0 20px rgba(255, 255, 255, 1);
-            }
-        }
-    </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
-            }
-        }
-    </script>
-</head>
-<body class="bg-gray-900 text-white">
 
-    <div id="canvas-container" class="fixed inset-0 z-0"></div>
-
-    <div id="loading-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 transition-opacity duration-500">
-        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
-        <p class="mt-4 text-gray-300">Loading 3D model...</p>
-    </div>
-
-    <div id="chat-ui" class="chat-ui-container hidden">
-        <div id="chat-history" class="mb-4"></div>
-        <div class="flex flex-col w-full space-y-2">
-            <div class="flex space-x-2 w-full">
-                <button id="mic-button" class="flex-grow bg-gray-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-gray-700 transition-colors duration-200 shadow-md flex items-center justify-center">
-                    <i class="fas fa-microphone"></i>
-                </button>
-                <button id="dance-button" class="flex-grow bg-purple-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-purple-700 transition-colors duration-200 shadow-md flex items-center justify-center">
-                    <i class="fas fa-music"></i>
-                </button>
-            </div>
-            <div class="flex space-x-2 w-full">
-                <input type="text" id="chat-input" placeholder="Type your message..." class="flex-grow p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <button id="send-button" class="flex-grow bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-md">
-                    Send
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <script type="module">
-        import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-
-        let scene, camera, renderer, avatar, mixer;
-        const clock = new THREE.Clock();
-        const raycaster = new THREE.Raycaster();
-        const pointer = new THREE.Vector2();
-        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-
-        let leftEye, rightEye, headBone, jawBone;
-        const mouse = new THREE.Vector2();
-        const lookAtTarget = new THREE.Vector3();
-
-        const leftEyeBoneName = 'Eye_Left';
-        const rightEyeBoneName = 'Eye_Right';
-        const headBoneName = 'HeadTop_End_end';
-        const jawBoneName = 'Jaw';
-        const rotationLimit = 0.5;
-
-        const animationNames = {
-            idle: 'idle',
-            idle2: 'idle2',
-            wave: 'wave',
-            talk: 'talk',
-            listening: 'listen',
-            thinking: 'think',
-            point: 'point',
-            nod: 'nod',
-            shake: 'shake',
-            walk: 'walk',
-            happy: 'happy',
-            dance: 'dance',
-        };
-
-        const greetings = [
-            { initial: "Hello there!", followUp: "What can I do for you?" },
-            { initial: "Hi!", followUp: "How can I help?" },
-            { initial: "Hey!", followUp: "Nice to see you!" },
-            { initial: "Greetings!", followUp: "Feel free to ask me anything." }
-        ];
-
-        let currentAction;
-        const actions = {};
-
-        let isGreeting = false;
-        let isMoving = false;
-        let isTurning = false;
-        let isPatrolling = false;
-        let targetQuaternion = new THREE.Quaternion();
-        const turnDuration = 500;
-        let turnStartTime = 0;
-
-        let lastInteractionTime = Date.now();
-        const IDLE_TIMEOUT_10 = 10 * 1000;
-        let lastMouseMovementTime = Date.now();
-        const MOUSE_IDLE_TIMEOUT = 5000;
-
-        const chatInput = document.getElementById('chat-input');
-        const sendButton = document.getElementById('send-button');
-        const micButton = document.getElementById('mic-button');
-        const danceButton = document.getElementById('dance-button');
-        const loadingScreen = document.getElementById('loading-screen');
-        const chatUiContainer = document.getElementById('chat-ui');
-        const chatHistory = document.getElementById('chat-history');
-
-        let canvasContainer;
-
-        const synth = window.speechSynthesis;
-        let speechRecognition;
-        let isListening = false;
+        // Get the new action from the animations map
+        const newAction = mixerRef.current.clipAction(animationsRef.current[name]);
         
-        let danceLoop;
+        // Configure the new action
+        newAction.reset();
+        newAction.setLoop(loopMode);
+        newAction.clampWhenFinished = clampWhenFinished;
+        newAction.setEffectiveWeight(weight);
+        newAction.fadeIn(0.5);
+        newAction.play();
 
-        init();
-        animate();
+        // Update the current action
+        currentAction = newAction;
+        return newAction;
+    }, []);
 
-        async function init() {
-            canvasContainer = document.getElementById('canvas-container');
-
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x111827);
-
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(0, 1.8, 3);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            canvasContainer.appendChild(renderer.domElement);
-
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
-            scene.add(ambientLight);
-
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(1, 2, 3).normalize();
-            scene.add(directionalLight);
-
-            const ground = new THREE.Mesh(
-                new THREE.PlaneGeometry(100, 100),
-                new THREE.MeshStandardMaterial({ color: 0x222222 })
-            );
-            ground.rotation.x = -Math.PI / 2;
-            ground.position.y = -0.01;
-            scene.add(ground);
-
-            const loader = new GLTFLoader();
-            loader.load('./chatbot_avatar.glb', (gltf) => {
-                avatar = gltf.scene;
-                scene.add(avatar);
-                console.log("Avatar loaded and added to scene.");
-
-                avatar.position.z = 0;
-                avatar.position.y = 0;
-
-                findBones(avatar);
-
-                mixer = new THREE.AnimationMixer(avatar);
-                console.log('Found animations in GLB:', gltf.animations.map(clip => clip.name));
-                gltf.animations.forEach(clip => {
-                    const action = mixer.clipAction(clip);
-                    actions[clip.name] = action;
-                });
-                
-                mixer.addEventListener('finished', (event) => {
-                    if (event.action._clip.name === animationNames.dance) {
-                        stopDanceMusic();
-                        playAction(animationNames.idle2, THREE.LoopRepeat);
-                    }
-                });
-                
-                startGreetingSequence();
-                
-                faceCamera();
-
-                setTimeout(() => {
-                    loadingScreen.style.opacity = '0';
-                    setTimeout(() => {
-                        loadingScreen.classList.add('hidden');
-                        chatUiContainer.classList.remove('hidden');
-                    }, 500);
-                }, 500);
-
-            },
-            (xhr) => {
-                const percent = Math.round((xhr.loaded / xhr.total) * 100);
-                document.querySelector('#loading-screen p').innerText = `Loading: ${percent}%`;
-            },
-            (error) => {
-                console.error('An error occurred while loading the GLTF model:', error);
-                document.querySelector('#loading-screen p').innerText = 'Failed to load model. Please check the file path.';
-            });
-
-            window.addEventListener('resize', onWindowResize);
-            window.addEventListener('mousemove', onMouseMove);
+    // Function to stop the dance loop and music
+    const stopDance = useCallback(() => {
+        if (isDancingRef.current) {
+            // Stop the dance animation and return to idle
+            playAction(animationNames.idle2, THREE.LoopRepeat);
             
-            chatInput.addEventListener('focus', () => {
-                reactToInteraction();
-                startGreetingSequence();
-            });
-            
-            sendButton.addEventListener('click', onSendMessage);
-            chatInput.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter') {
-                    onSendMessage();
-                }
-            });
-            
-            renderer.domElement.addEventListener('mousedown', onCanvasClick, false);
-            
-            micButton.addEventListener('click', toggleSpeechRecognition);
-            
-            danceButton.addEventListener('click', onDanceButtonClick);
-            initSpeechRecognition();
-        }
-        
-        function startGreetingSequence() {
-            console.log("startGreetingSequence called.");
-            if (isGreeting) {
-                console.log("Greeting sequence is already in progress. Aborting.");
-                return;
+            // Stop the music loop
+            if (audioLoopRef.current) {
+                audioLoopRef.current.stop();
+                audioLoopRef.current.dispose();
+                audioLoopRef.current = null;
             }
-            isGreeting = true;
             
-            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-            
-            playAction(animationNames.wave, THREE.LoopOnce, 2); 
-            
-            speakText(randomGreeting.initial, () => {
-                playAction(animationNames.talk, THREE.LoopRepeat);
-                speakText(randomGreeting.followUp, () => {
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
-                    isGreeting = false;
-                    resetIdleSequence();
-                });
-            });
+            isDancingRef.current = false;
         }
+    }, [playAction, animationNames]);
 
-        function initSpeechRecognition() {
-            console.log('Initializing speech recognition...');
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (SpeechRecognition) {
-                console.log('Speech Recognition API is supported by this browser.');
-                speechRecognition = new SpeechRecognition();
-                speechRecognition.continuous = false;
-                speechRecognition.interimResults = false;
-                speechRecognition.lang = 'en-US';
 
-                speechRecognition.onstart = () => {
-                    isListening = true;
-                    micButton.classList.add('listening-button');
-                    console.log('Speech recognition started...');
-                };
+    // Function to handle the dance action
+    const handleDance = useCallback(() => {
+        // Stop any current movement or patrol
+        stopPatrol();
+        setIsMoving(false);
+        stopIdleTimer();
 
-                speechRecognition.onresult = (event) => {
-                    const transcript = event.results[0][0].transcript;
-                    if (transcript && transcript.trim() !== '') {
-                        chatInput.value = transcript;
-                        onSendMessage();
-                    }
-                    speechRecognition.stop();
-                };
+        if (!isDancingRef.current) {
+            // Start the dance animation
+            const danceAction = playAction(animationNames.dance, THREE.LoopOnce);
 
-                speechRecognition.onerror = (event) => {
-                    console.error('Speech recognition error:', event.error);
-                    isListening = false;
-                    micButton.classList.remove('listening-button');
-                };
-
-                speechRecognition.onend = () => {
-                    micButton.classList.remove('listening-button');
-                    isListening = false;
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
-                    resetIdleSequence();
-                };
-            } else {
-                console.warn('Speech Recognition API is not supported in this browser. The microphone button will be hidden.');
-                micButton.style.display = 'none';
-            }
-        }
-        
-        function toggleSpeechRecognition() {
-            console.log('Microphone button clicked. isListening:', isListening);
-            if (speechRecognition) {
-                if (isListening) {
-                    speechRecognition.stop();
-                } else {
-                    reactToInteraction();
-                    playAction(animationNames.talk, THREE.LoopRepeat);
-                    speakText("Go ahead, I'm listening.", () => {
-                         playAction(animationNames.listening, THREE.LoopRepeat);
-                         if (speechRecognition) {
-                             speechRecognition.start();
-                         }
-                    });
-                }
-            }
-        }
-        
-        async function playDanceMusic() {
-            await Tone.start();
-            console.log("Audio context started. Playing dance music.");
-
-            const drum = new Tone.MembraneSynth().toDestination();
-            const bass = new Tone.Synth({
-                oscillator: { type: "square" },
-                envelope: {
-                    attack: 0.001,
-                    decay: 0.2,
-                    sustain: 0.1,
-                    release: 0.2
-                }
+            // Set up a simple musical loop with Tone.js
+            const synth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "square" }
             }).toDestination();
             
-            danceLoop = new Tone.Sequence((time, note) => {
-                if (note === 'C1') {
-                    drum.triggerAttackRelease(note, "8n", time);
-                } else if (note) {
-                    bass.triggerAttackRelease(note, "8n", time);
-                }
-            }, ['C1', null, 'C1', null, null, 'C1', null, null, 'C1', null, 'C1', null, null, 'C1', null, 'C1']).start(0);
+            const musicLoop = new Tone.Loop(time => {
+                synth.triggerAttackRelease(["C4", "E4", "G4", "B4"], "8n", time);
+                synth.triggerAttackRelease(["E4", "G4", "B4", "C5"], "8n", time + Tone.Time("8n").toSeconds());
+            }, "4n").start(0);
 
-            Tone.Transport.start();
+            // Keep track of the synth and loop to stop them later
+            audioSynthRef.current = synth;
+            audioLoopRef.current = musicLoop;
+            isDancingRef.current = true;
+        } else {
+            // If already dancing, stop the dance and music
+            stopDance();
         }
 
-        function stopDanceMusic() {
-            if (danceLoop) {
-                danceLoop.stop();
-                danceLoop.dispose();
-                danceLoop = null;
-            }
-            if (Tone.Transport.state === 'started') {
-                Tone.Transport.stop();
-            }
-            console.log("Dance music stopped.");
-        }
+        // Reset the interaction timer to prevent immediate patrolling
+        lastInteractionTimeRef.current = Date.now();
+    }, [playAction, animationNames, stopDance]);
 
-        function onDanceButtonClick() {
-            if (!avatar || isGreeting) return;
-            reactToInteraction();
-            playAction(animationNames.dance, THREE.LoopOnce);
-            playDanceMusic();
-        }
 
-        function reactToInteraction() {
-            if (!avatar) return;
-            resetIdleSequence();
-            isMoving = false;
-            isTurning = false;
-            isPatrolling = false;
-            avatar.position.set(0, 0, 0);
-            faceCamera();
-        }
+    // Function to play a greeting animation and text
+    const handleGreeting = useCallback(async () => {
+        // Stop any movement, patrol, or dance
+        setIsMoving(false);
+        stopPatrol();
+        stopDance();
+        stopIdleTimer();
+
+        // Set the avatar to talk
+        playAction(animationNames.talk, THREE.LoopOnce);
+        setIsSpeaking(true);
+
+        const greetingMessage = 'Hello! I am ready to help.';
+        speakText(greetingMessage);
         
-        function handleAvatarInteraction() {
-            console.log('handleAvatarInteraction called.');
-            reactToInteraction(); // Call reactToInteraction for avatar clicks
-            startGreetingSequence();
-        }
+        // Add the greeting to the chat history
+        setChatHistory(prev => [...prev, { role: 'system', text: greetingMessage }]);
 
-        function onCanvasClick(event) {
-            console.log('onCanvasClick called.');
-            if (isGreeting) return;
-            const rect = renderer.domElement.getBoundingClientRect();
-            pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        // Wait for the speech to finish and then go back to idle
+        await new Promise(resolve => {
+            const checkSpeech = setInterval(() => {
+                if (!window.speechSynthesis.speaking) {
+                    clearInterval(checkSpeech);
+                    resolve();
+                }
+            }, 100);
+        });
 
-            raycaster.setFromCamera(pointer, camera);
+        playAction(animationNames.idle2, THREE.LoopRepeat);
+        setIsSpeaking(false);
+        startIdleTimer();
+    }, [animationNames, playAction, stopDance, stopIdleTimer, startIdleTimer]);
 
-            const intersectsAvatar = raycaster.intersectObject(avatar, true);
-            if (intersectsAvatar.length > 0) {
-                console.log('Avatar clicked!');
-                handleAvatarInteraction();
-                return;
+
+    // Function to move the avatar to a new position
+    const moveAvatar = useCallback((targetPosition) => {
+        // Stop any patrol or dance
+        stopPatrol();
+        stopDance();
+        stopIdleTimer();
+        lastInteractionTimeRef.current = Date.now();
+
+        const avatarPosition = avatarRef.current.position;
+        
+        // Play the walk animation and set the moving state
+        playAction(animationNames.walk, THREE.LoopRepeat);
+        setIsMoving(true);
+
+        // A simple linear interpolation for smooth movement
+        const animateMove = () => {
+            if (!isMoving) return;
+
+            const distance = avatarPosition.distanceTo(targetPosition);
+            if (distance > 0.1) {
+                avatarPosition.lerp(targetPosition, 0.05);
+                requestAnimationFrame(animateMove);
+            } else {
+                // Stop the walking animation and go back to idle
+                playAction(animationNames.idle2, THREE.LoopRepeat);
+                setIsMoving(false);
+                startIdleTimer();
             }
+        };
 
-            const intersects = new THREE.Vector3();
-            if (raycaster.ray.intersectPlane(groundPlane, intersects)) {
-                console.log('Ground clicked at:', intersects);
-                isPatrolling = false;
-                setNewTarget(intersects);
-            }
-        }
+        animateMove();
+    }, [animationNames, isMoving, playAction, stopDance, stopIdleTimer, startIdleTimer]);
 
-        function setNewTarget(newPosition) {
-            if (!avatar || isGreeting) return;
-            stopDanceMusic();
+    // Function to start the patrol behavior
+    const startPatrol = useCallback(() => {
+        if (!avatarRef.current || isMoving || isDancingRef.current) return;
+        
+        // Start a loop that moves the avatar to a random point
+        patrolIntervalRef.current = setInterval(() => {
+            const randomX = (Math.random() - 0.5) * 20;
+            const randomZ = (Math.random() - 0.5) * 20;
+            const targetPosition = new THREE.Vector3(randomX, 0, randomZ);
 
-            if (avatar.position.distanceTo(newPosition) < 0.05) {
-                isMoving = false;
+            // Make the avatar look at the target before walking
+            avatarRef.current.lookAt(targetPosition);
+
+            moveAvatar(targetPosition);
+        }, 10000); // Move every 10 seconds
+    }, [isMoving, moveAvatar]);
+
+
+    // Function to stop the patrol
+    const stopPatrol = useCallback(() => {
+        clearTimeout(patrolTimeoutRef.current);
+        clearInterval(patrolIntervalRef.current);
+        patrolTimeoutRef.current = null;
+        patrolIntervalRef.current = null;
+    }, []);
+
+    // Function to stop the idle timer
+    const stopIdleTimer = useCallback(() => {
+        clearTimeout(idleTimeoutRef.current);
+        idleTimeoutRef.current = null;
+        isIdle2Ref.current = true;
+    }, []);
+    
+    // Function to start the idle timer sequence
+    const startIdleTimer = useCallback(() => {
+        stopIdleTimer(); // Clear any existing timer
+        stopPatrol(); // Make sure patrol is off
+
+        // First timer: 10 seconds to switch from idle2 to idle
+        idleTimeoutRef.current = setTimeout(() => {
+            if (!isDancingRef.current && !isMoving) {
                 playAction(animationNames.idle, THREE.LoopRepeat);
-                return;
+                isIdle2Ref.current = false;
+
+                // Second timer: 20 seconds to start patrol
+                patrolTimeoutRef.current = setTimeout(() => {
+                    if (!isDancingRef.current && !isMoving) {
+                        startPatrol();
+                    }
+                }, 20000);
             }
+        }, 10000);
+    }, [playAction, animationNames, startPatrol, stopIdleTimer, stopPatrol]);
 
-            avatar.userData.targetPosition = newPosition;
 
-            const direction = new THREE.Vector3().subVectors(newPosition, avatar.position).normalize();
-            // Calculate the target rotation based on the direction of movement
-            targetQuaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
-
-            isTurning = true;
-            turnStartTime = Date.now();
-
-            isMoving = true;
-            playAction(animationNames.walk, THREE.LoopRepeat);
-        }
-
-        function faceCamera() {
-            if (!avatar) return;
-            const cameraPosition = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
-            avatar.lookAt(cameraPosition.x, avatar.position.y, cameraPosition.z);
-        }
-
-        function playAction(name, loop = THREE.LoopOnce, timeScale = 1) {
-            console.log(`Attempting to play animation: ${name}. Current action is: ${currentAction ? currentAction.getClip().name : 'none'}`);
-            
-            if (isGreeting && name !== animationNames.wave && name !== animationNames.talk) {
-                console.log(`Aborting playAction(${name}) because greeting sequence is active.`);
-                return;
-            }
-
-            if (avatar && actions[name]) {
-                const newAction = actions[name];
-                
-                if (currentAction && currentAction.getClip().name === animationNames.dance) {
-                    stopDanceMusic();
+    // Effect to handle the autonomous patrol behavior
+    useEffect(() => {
+        const checkIdle = () => {
+            const now = Date.now();
+            // If the avatar is not moving, dancing, and has been idle for a while, start the idle timer sequence
+            if (!isMoving && !isDancingRef.current && (now - lastInteractionTimeRef.current > 1000)) {
+                if (!idleTimeoutRef.current && isIdle2Ref.current) {
+                    startIdleTimer();
                 }
-
-                if (currentAction && currentAction !== newAction) {
-                    currentAction.fadeOut(0.5); 
-                }
-
-                newAction.reset()
-                         .setEffectiveTimeScale(timeScale)
-                         .setEffectiveWeight(1)
-                         .setLoop(loop)
-                         .fadeIn(0.5)
-                         .play();
-                currentAction = newAction;
-                console.log(`Successfully transitioned to animation: ${name}`);
-
-            } else if (avatar) {
-                console.warn(`Animation clip '${name}' not found.`);
+            } else {
+                // If the avatar is active, reset the timers
+                stopIdleTimer();
+                stopPatrol();
             }
-        }
+        };
+
+        const idleInterval = setInterval(checkIdle, 1000);
+        return () => clearInterval(idleInterval);
+    }, [isMoving, startPatrol, stopPatrol, startIdleTimer, stopIdleTimer]);
+
+
+    // Speak function using the browser's TTS API
+    const speakText = (text) => {
+        const utterance = new SpeechSynthesisUtterance(text);
         
-        function onSendMessage() {
-            console.log('Send button clicked. Starting message process.');
-            const message = chatInput.value.trim();
-            if (message) {
-                reactToInteraction();
-                chatInput.value = '';
-
-                appendMessage(message, 'user');
-
-                isMoving = false;
-                isPatrolling = false;
-                faceCamera();
-                playAction(animationNames.thinking, THREE.LoopRepeat);
-
-                generateResponseFromAPI(message);
-            }
+        // Find a male voice for the avatar if available
+        const voices = window.speechSynthesis.getVoices();
+        const maleVoice = voices.find(voice => voice.name.includes('male') || voice.name.includes('Male'));
+        if (maleVoice) {
+            utterance.voice = maleVoice;
         }
 
-        function appendMessage(message, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('chat-message');
-            messageDiv.classList.add(sender === 'user' ? 'user-message' : 'bot-message');
-            messageDiv.innerText = message;
-            chatHistory.appendChild(messageDiv);
-            chatHistory.scrollTop = chatHistory.scrollHeight;
-        }
+        window.speechSynthesis.speak(utterance);
+    };
 
-        async function generateResponseFromAPI(userPrompt) {
-            if (userPrompt.toLowerCase().trim() === 'dance') {
-                playAction(animationNames.dance, THREE.LoopOnce);
-                playDanceMusic();
-                return;
-            }
 
+    // Function to handle the chat input
+    const handleChat = useCallback(async (prompt) => {
+        if (!prompt.trim()) return;
+
+        // Stop any existing animation, patrol, or dance
+        stopPatrol();
+        stopDance();
+        stopIdleTimer();
+
+        // Update chat history with user's message
+        setChatHistory(prev => [...prev, { role: 'user', text: prompt }]);
+        setIsThinking(true);
+        lastInteractionTimeRef.current = Date.now();
+
+        // Play the talking animation
+        const talkAction = playAction(animationNames.talk, THREE.LoopOnce);
+        setIsSpeaking(true);
+
+        try {
+            // API call to the Gemini 2.5 Flash model
+            const chatHistoryForAPI = chatHistory.map(chat => ({ role: chat.role, parts: [{ text: chat.text }] }));
+            chatHistoryForAPI.push({ role: 'user', parts: [{ text: prompt }] });
+            const payload = {
+                contents: chatHistoryForAPI,
+            };
             const apiKey = "";
-            if (!apiKey) {
-                console.error("API key is missing. Please add your API key to the code.");
-                appendMessage('Error: API key is missing. Please add it to the code to enable the conversation.', 'bot');
-                playAction(animationNames.shake);
-                return;
-            }
-            
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-            const chatHistoryContent = [];
-            const messages = chatHistory.querySelectorAll('.chat-message');
-            messages.forEach(msg => {
-                const role = msg.classList.contains('user-message') ? 'user' : 'model';
-                chatHistoryContent.push({ role: role, parts: [{ text: msg.innerText }] });
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
 
-            chatHistoryContent.push({ role: "user", parts: [{ text: userPrompt }] });
+            const result = await response.json();
+            const text = result?.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I couldn\'t generate a response.';
+            
+            // Add the bot's response to the chat history and speak it
+            setChatHistory(prev => [...prev, { role: 'system', text }]);
+            speakText(text);
 
-            const payload = { contents: chatHistoryContent };
+            // Wait for the speech to finish before returning to idle
+            await new Promise(resolve => {
+                const checkSpeech = setInterval(() => {
+                    if (!window.speechSynthesis.speaking) {
+                        clearInterval(checkSpeech);
+                        resolve();
+                    }
+                }, 100);
+            });
 
-            let retries = 0;
-            const maxRetries = 5;
-            let delay = 1000;
+        } catch (error) {
+            console.error('Error generating content:', error);
+            const errorMessage = 'An error occurred. Please try again.';
+            setChatHistory(prev => [...prev, { role: 'system', text: errorMessage }]);
+            speakText(errorMessage);
+        } finally {
+            setIsThinking(false);
+            setIsSpeaking(false);
+            // After talking, go back to the idle state
+            playAction(animationNames.idle2, THREE.LoopRepeat);
+            lastInteractionTimeRef.current = Date.now();
+            startIdleTimer();
+        }
+    }, [chatHistory, playAction, animationNames, stopDance, stopPatrol, stopIdleTimer, startIdleTimer]);
 
-            while (retries < maxRetries) {
-                try {
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+
+    // Function to handle speech recognition
+    const handleSpeechRecognition = useCallback(() => {
+        // Check for browser support
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            setMessage('Your browser does not support Speech Recognition. Please use Chrome.');
+            return;
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        setIsListening(true);
+        setMessage('Listening...');
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            setInputValue(transcript);
+            handleChat(transcript);
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            setMessage(`Error: ${event.error}`);
+            setIsListening(false);
+        };
+
+        recognition.onend = () => {
+            setIsListening(false);
+            setMessage(null);
+        };
+
+        recognition.start();
+    }, [handleChat]);
+
+
+    // Main useEffect for setting up the Three.js scene and avatar
+    useEffect(() => {
+        const currentMount = mountRef.current;
+        const width = currentMount.clientWidth;
+        const height = currentMount.clientHeight;
+
+        // --- SCENE SETUP ---
+        const setupScene = () => {
+            renderer.current.setSize(width, height);
+            renderer.current.setPixelRatio(window.devicePixelRatio);
+            renderer.current.shadowMap.enabled = true;
+            currentMount.appendChild(renderer.current.domElement);
+
+            camera.current.position.set(0, 2, 5);
+            scene.current.add(new THREE.AmbientLight(0xffffff, 0.5));
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(5, 5, 5);
+            directionalLight.castShadow = true;
+            scene.current.add(directionalLight);
+
+            // Ground plane
+            const planeGeometry = new THREE.PlaneGeometry(100, 100);
+            const planeMaterial = new THREE.MeshPhongMaterial({ color: 0x808080 });
+            const ground = new THREE.Mesh(planeGeometry, planeMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.current.add(ground);
+        };
+
+        // --- AVATAR LOADING ---
+        const loadAvatar = () => {
+            const loader = new GLTFLoader();
+            loader.load(
+                'https://models.readyplayer.me/65c8266228399a0a03004313.glb',
+                (gltf) => {
+                    const avatar = gltf.scene;
+                    avatarRef.current = avatar;
+                    avatar.scale.set(1.5, 1.5, 1.5);
+                    avatar.position.y = 0.5;
+                    avatar.castShadow = true;
+                    avatar.receiveShadow = true;
+                    scene.current.add(avatar);
+
+                    // Initialize the animation mixer
+                    mixerRef.current = new THREE.AnimationMixer(avatar);
+                    gltf.animations.forEach(clip => {
+                        animationsRef.current[clip.name] = clip;
+                    });
+                    
+                    // Add an event listener for animation finish
+                    mixerRef.current.addEventListener('finished', (e) => {
+                        // Check if the finished animation was the dance
+                        if (e.action === currentAction && e.action.getClip().name === animationNames.dance) {
+                            stopDance();
+                            playAction(animationNames.idle2, THREE.LoopRepeat);
+                            startIdleTimer();
+                        }
                     });
 
-                    if (!response.ok) {
-                        if (response.status === 403) {
-                            console.error('API call failed with status 403. Please check your API key.');
-                            playAction(animationNames.shake);
-                            appendMessage('API Error: Please check your API key and permissions.', 'bot');
-                            return;
-                        }
-                        if (response.status === 429) {
-                            console.warn(`API call failed with status 429. Retrying in ${delay}ms...`);
-                            await new Promise(res => setTimeout(res, delay));
-                            delay *= 2;
-                            retries++;
-                            continue;
-                        }
-                        console.error(`API call failed with status: ${response.status}`);
-                        playAction(animationNames.shake);
-                        appendMessage('API Error: An unexpected error occurred.', 'bot');
+                    // Play the default idle animation
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                    setIsAvatarLoaded(true);
+                    
+                    // Initialize look-at behavior for head/eyes
+                    setupLookAtBehavior(avatar);
+                    startIdleTimer();
+                },
+                (xhr) => {
+                    console.log(`Avatar loading: ${(xhr.loaded / xhr.total) * 100}% loaded`);
+                },
+                (error) => {
+                    console.error('An error happened loading the avatar:', error);
+                }
+            );
+        };
+
+        // --- LOOK-AT BEHAVIOR ---
+        const setupLookAtBehavior = (avatar) => {
+            let neck = null;
+            let head = null;
+            avatar.traverse(o => {
+                if (o.isBone) {
+                    if (o.name === "Neck") neck = o;
+                    if (o.name === "Head") head = o;
+                }
+            });
+            if (neck && head) {
+                const headBone = head;
+                const neckBone = neck;
+                const targetQuaternion = new THREE.Quaternion();
+                const originalHeadQuaternion = headBone.quaternion.clone();
+                const originalNeckQuaternion = neckBone.quaternion.clone();
+
+                const onPointerMove = (event) => {
+                    if (!lookAtMouseRef.current) return;
+                    mouse.current.x = (event.clientX / window.innerWidth) * 2 - 1;
+                    mouse.current.y = -(event.clientY / window.innerHeight) * 2 + 1;
+                };
+
+                const updateLookAt = () => {
+                    if (!lookAtMouseRef.current || isSpeaking || isMoving) {
+                        // Reset head and neck rotation if not looking at mouse
+                        headBone.quaternion.slerp(originalHeadQuaternion, 0.1);
+                        neckBone.quaternion.slerp(originalNeckQuaternion, 0.1);
                         return;
                     }
 
-                    const result = await response.json();
-                    if (result.candidates && result.candidates.length > 0 &&
-                        result.candidates[0].content && result.candidates[0].content.parts &&
-                        result.candidates[0].content.parts.length > 0) {
-                        const responseText = result.candidates[0].content.parts[0].text;
+                    // Calculate the position to look at based on the mouse
+                    const vector = new THREE.Vector3(mouse.current.x, mouse.current.y, 1);
+                    vector.unproject(camera.current);
+                    vector.sub(headBone.position).normalize();
 
-                        appendMessage(responseText, 'bot');
+                    // Apply a limited rotation to the head and neck
+                    const headLimit = Math.PI * 0.15; // 15 degrees
+                    const neckLimit = Math.PI * 0.1; // 10 degrees
 
-                        const lowerCaseText = responseText.toLowerCase();
-                        if (lowerCaseText.includes('dance')) {
-                            playAction(animationNames.dance, THREE.LoopOnce);
-                            playDanceMusic();
-                        } else if (lowerCaseText.includes('happy') || lowerCaseText.includes('awesome')) {
-                            playAction(animationNames.happy);
-                        } else if (lowerCaseText.includes('yes') || lowerCaseText.includes('correct')) {
-                            playAction(animationNames.nod);
-                        } else if (lowerCaseText.includes('no') || lowerCaseText.includes('incorrect')) {
-                            playAction(animationNames.shake);
-                        } else if (lowerCaseText.includes('important') || lowerCaseText.includes('note')) {
-                            playAction(animationNames.point);
-                        }
+                    headBone.lookAt(vector);
+                    neckBone.lookAt(vector);
 
-                        playAction(animationNames.talk, THREE.LoopRepeat);
-                        speakText(responseText);
-                    } else {
-                        console.error("Unexpected API response structure.");
-                        playAction(animationNames.shake);
-                        appendMessage('API Error: The response was empty or malformed.', 'bot');
-                        return;
-                    }
-                    return;
-                } catch (error) {
-                    console.error('An error occurred during API call:', error);
-                    playAction(animationNames.shake);
-                    appendMessage('API Error: An error occurred during the API call.', 'bot');
-                    return;
+                    // Clamp the rotation
+                    headBone.quaternion.slerp(originalHeadQuaternion, 0.5);
+                    neckBone.quaternion.slerp(originalNeckQuaternion, 0.5);
+                };
+                
+                window.addEventListener('pointermove', onPointerMove);
+                // Call updateLookAt in the animation loop
+                const animateLookAt = () => {
+                    updateLookAt();
+                    requestAnimationFrame(animateLookAt);
+                };
+                animateLookAt();
+            }
+        };
+
+
+        // --- EVENT LISTENERS AND ANIMATION LOOP ---
+        const onWindowResize = () => {
+            camera.current.aspect = window.innerWidth / window.innerHeight;
+            camera.current.updateProjectionMatrix();
+            renderer.current.setSize(window.innerWidth, window.innerHeight);
+        };
+
+        const onPointerDown = (event) => {
+            if (!isAvatarLoaded) return;
+            // Normalize mouse coordinates
+            mouse.current.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.current.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Cast a ray from the camera to the mouse position
+            raycaster.current.setFromCamera(mouse.current, camera.current);
+            const intersects = raycaster.current.intersectObject(scene.current.children, true);
+            
+            if (intersects.length > 0) {
+                const firstIntersect = intersects[0];
+                // Check if the click was on the ground
+                if (firstIntersect.object.geometry instanceof THREE.PlaneGeometry) {
+                    moveAvatar(firstIntersect.point);
+                }
+                // Check if the click was on the avatar itself
+                if (firstIntersect.object.parent && firstIntersect.object.parent.uuid === avatarRef.current.uuid) {
+                    handleGreeting();
                 }
             }
-            if (retries === maxRetries) {
-                console.error("Max retries reached. API call failed.");
-                playAction(animationNames.shake);
-                appendMessage('API Error: Could not connect to the server after multiple retries.', 'bot');
+            lastInteractionTimeRef.current = Date.now();
+        };
+
+        const animate = () => {
+            requestAnimationFrame(animate);
+            const delta = clockRef.current.getDelta();
+            if (mixerRef.current) {
+                mixerRef.current.update(delta);
             }
-        }
+            // Update lookAt behavior
+            lookAtMouseRef.current = !isMoving && !isSpeaking;
+            if (lookAtMouseRef.current) {
+                 // A simple way to make the head follow the mouse for now
+                 if (avatarRef.current) {
+                    const vector = new THREE.Vector3(mouse.current.x, mouse.current.y, 1);
+                    vector.unproject(camera.current);
+                    const headBone = avatarRef.current.getObjectByName('Head');
+                    if (headBone) {
+                         headBone.lookAt(vector);
+                    }
+                 }
+            }
+            renderer.current.render(scene.current, camera.current);
+        };
         
-        function speakText(text, onEndCallback = null) {
-            console.log("Speaking: ", text);
-            if ('speechSynthesis' in window) {
-                if (synth.speaking) {
-                    synth.cancel();
-                }
+        setupScene();
+        loadAvatar();
 
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.pitch = 1;
-                utterance.rate = 1;
-                utterance.volume = 1;
+        controls.current = new OrbitControls(camera.current, renderer.current.domElement);
+        controls.current.target.set(0, 1.5, 0);
+        controls.current.update();
 
-                const voices = synth.getVoices();
-                const maleVoice = voices.find(v => v.name.includes("Male") && v.lang.includes("en"));
-                
-                if (maleVoice) {
-                    utterance.voice = maleVoice;
-                    console.log(`Using male voice: ${maleVoice.name}`);
-                } else {
-                    console.warn("Male voice not found. Using default voice.");
-                }
+        window.addEventListener('resize', onWindowResize);
+        window.addEventListener('pointerdown', onPointerDown);
 
-                utterance.onend = () => {
-                    console.log("Speech finished. Calling onEndCallback.");
-                    if (onEndCallback) {
-                        onEndCallback();
-                    } else {
-                        playAction(animationNames.idle2, THREE.LoopRepeat);
-                    }
-                    resetIdleSequence();
-                };
-                
-                utterance.onerror = (e) => {
-                    console.error("SpeechSynthesisUtterance.onerror", e);
-                     if (onEndCallback) onEndCallback();
-                };
-
-                synth.speak(utterance);
-            } else {
-                 console.warn("Speech Synthesis is not supported in this browser. Skipping speech.");
-                 if (onEndCallback) onEndCallback();
-            }
-        }
-
-        function findBones(model) {
-            model.traverse((object) => {
-                if (object.isBone) {
-                    if (object.name === leftEyeBoneName) leftEye = object;
-                    if (object.name === rightEyeBoneName) rightEye = object;
-                    if (object.name === headBoneName) headBone = object;
-                    if (object.name === jawBoneName) jawBone = object;
+        // This is a new event listener for the animation mixer
+        if (mixerRef.current) {
+            mixerRef.current.addEventListener('finished', (e) => {
+                // If the dance animation finished, stop the music and go back to idle
+                if (isDancingRef.current && e.action.getClip().name === animationNames.dance) {
+                    stopDance();
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                    startIdleTimer();
                 }
             });
         }
 
-        function onMouseMove(event) {
-            if (isGreeting) return;
-            lastMouseMovementTime = Date.now();
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-        }
+        animate();
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function resetIdleSequence() {
-            lastInteractionTime = Date.now();
-            isMoving = false;
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (!avatar || !mixer) {
-                if (mixer) mixer.update(clock.getDelta());
-                renderer.render(scene, camera);
-                return;
+        return () => {
+            // Cleanup on component unmount
+            currentMount.removeChild(renderer.current.domElement);
+            window.removeEventListener('resize', onWindowResize);
+            window.removeEventListener('pointerdown', onPointerDown);
+            if (mixerRef.current) {
+                mixerRef.current.stopAllAction();
             }
+            stopDance();
+            stopPatrol();
+            stopIdleTimer();
+        };
+    }, [playAction, animationNames, handleDance, handleGreeting, handleChat, moveAvatar, isMoving, startPatrol, stopPatrol, stopDance, startIdleTimer, stopIdleTimer]);
+
+    return (
+        <div className="flex h-screen w-screen bg-gray-900 text-white">
+            <div className="flex-grow flex flex-col items-center justify-center p-4 relative" ref={mountRef}>
+                {message && (
+                    <div className="absolute top-4 bg-yellow-500 text-yellow-900 px-4 py-2 rounded-lg font-bold z-50">
+                        {message}
+                    </div>
+                )}
+            </div>
             
-            const delta = clock.getDelta();
+            <div className="w-1/4 max-w-sm bg-gray-800 p-4 flex flex-col h-full rounded-l-lg shadow-xl">
+                <h2 className="text-xl font-bold mb-4">Chat</h2>
+                <div className="flex-grow overflow-y-auto space-y-4 pr-2 mb-4">
+                    {chatHistory.map((msg, index) => (
+                        <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`p-3 rounded-xl max-w-[80%] ${msg.role === 'user' ? 'bg-blue-600' : 'bg-gray-700'}`}>
+                                {msg.text}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        placeholder="Type a message..."
+                        className="flex-grow p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                handleChat(inputValue);
+                                setInputValue('');
+                            }
+                        }}
+                        disabled={isThinking || isSpeaking || isListening}
+                    />
+                    <button
+                        onClick={() => {
+                            handleChat(inputValue);
+                            setInputValue('');
+                        }}
+                        className="bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200"
+                        disabled={isThinking || isSpeaking || isListening || inputValue.trim() === ''}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                    </button>
+                    <button
+                        onClick={handleSpeechRecognition}
+                        className={`p-3 rounded-lg font-bold transition-colors duration-200 ${isListening ? 'bg-red-500 hover:bg-red-600' : 'bg-green-600 hover:bg-green-700'}`}
+                        disabled={isThinking || isSpeaking}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7v0m-7-7a7 7 0 017-7v0m7 7v0a7 7 0 01-7-7m0 7a7 7 0 01-7-7m7 7v0a7 7 0 01-7-7m7 7v0a7 7 0 01-7-7m7-7H3" />
+                        </svg>
+                    </button>
+                </div>
 
-            const timeSinceLastInteraction = Date.now() - lastInteractionTime;
-            
-            if (!isGreeting && timeSinceLastInteraction > IDLE_TIMEOUT_10 && currentAction && currentAction.getClip().name === animationNames.idle2) {
-                 playAction(animationNames.idle, THREE.LoopRepeat);
-            }
-
-            if (!isGreeting && currentAction && currentAction.getClip().name === animationNames.idle2 && leftEye && rightEye && headBone) {
-                lookAtTarget.set(mouse.x, mouse.y, 1).unproject(camera);
-
-                const leftEyePos = new THREE.Vector3().setFromMatrixPosition(leftEye.matrixWorld);
-                const rightEyePos = new THREE.Vector3().setFromMatrixPosition(rightEye.matrixWorld);
-
-                const leftEyeQuaternion = new THREE.Quaternion().setFromRotationMatrix(
-                    new THREE.Matrix4().lookAt(leftEyePos, lookAtTarget, leftEye.up)
-                );
-                const rightEyeQuaternion = new THREE.Quaternion().setFromRotationMatrix(
-                    new THREE.Matrix4().lookAt(rightEyePos, lookAtTarget, rightEye.up)
-                );
-
-                leftEye.quaternion.slerp(leftEyeQuaternion, rotationLimit);
-                rightEye.quaternion.slerp(rightEyeQuaternion, rotationLimit);
-
-                const headQuaternion = new THREE.Quaternion().setFromRotationMatrix(
-                    new THREE.Matrix4().lookAt(headBone.position, lookAtTarget, headBone.up)
-                );
-                headBone.quaternion.slerp(headQuaternion, rotationLimit * 0.5);
-            }
-
-            if (synth.speaking && jawBone) {
-                const time = Date.now() * 0.005;
-                const jawRotation = Math.sin(time) * 0.05 + 0.02;
-                jawBone.rotation.x = -jawRotation;
-            } else if (jawBone) {
-                jawBone.rotation.x = 0;
-            }
-            
-            if (isMoving) {
-                const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
-
-                if (distance > 0.05) {
-                    if (isTurning) {
-                        const elapsedTime = Date.now() - turnStartTime;
-                        const turnProgress = Math.min(elapsedTime / turnDuration, 1);
-                        avatar.quaternion.slerp(targetQuaternion, turnProgress);
-                        if (turnProgress >= 1) {
-                            isTurning = false;
-                        }
-                    } else {
-                        const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
-                        avatar.position.addScaledVector(direction, 0.008);
-                    }
-                } else {
-                    avatar.position.copy(avatar.userData.targetPosition);
-                    isMoving = false;
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
-                    lastInteractionTime = Date.now();
-                }
-            }
-            
-            if (mixer) mixer.update(delta);
-            renderer.render(scene, camera);
-        }
-    </script>
-</body>
-</html>
+                <div className="flex justify-center mt-4">
+                    <button
+                        onClick={handleDance}
+                        className="bg-purple-600 text-white p-3 rounded-lg font-bold hover:bg-purple-700 transition-colors duration-200"
+                        disabled={isThinking || isSpeaking || isMoving}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M4 4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-3.293l-1.147-1.146a.5.5 0 00-.707 0L9.293 4H4zm10.586 2l1.147-1.146a.5.5 0 01.707 0L17 5.293V6h-2.586zM10 9a3 3 0 100 6 3 3 0 000-6z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
