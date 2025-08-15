@@ -15,6 +15,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <!-- Tone.js for web audio -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
     <style>
         /* General body styling and font */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
@@ -212,7 +213,7 @@
     <canvas id="avatar-canvas"></canvas>
 
     <!-- Chat and Controls UI -->
-    <div class="chat-ui-container">
+    <div id="chat-ui-container" class="chat-ui-container">
         <h1 class="text-white text-2xl font-bold mb-4">AI Avatar Chat</h1>
         <div id="chat-history" class="chat-history"></div>
         <div class="chat-input-area">
@@ -243,24 +244,14 @@
 
     <script type="module">
         // Global variables and constants
-        const avatarUrl = 'https://cdn.glitch.global/c69e6b36-58be-401d-935f-b51f0445d0ed/avatar.glb?v=1723483988636';
-        const animationPaths = {
-            idle: 'https://cdn.glitch.global/c69e6b36-58be-401d-935f-b51f0445d0ed/idle.glb?v=1723483989345',
-            idle2: 'https://cdn.glitch.global/c69e6b36-58be-401d-935f-b51f0445d0ed/idle2.glb?v=1723483989018',
-            walk: 'https://cdn.glitch.global/c69e6b36-58be-401d-935f-b51f0445d0ed/walk.glb?v=1723483990393',
-            wave: 'https://cdn.glitch.global/c69e6b36-58be-401d-935f-b51f0445d0ed/wave.glb?v=1723483990812',
-            talk: 'https://cdn.glitch.global/c69e6b36-58be-401d-935f-b51f0445d0ed/talk.glb?v=1723483989808',
-            think: 'https://cdn.glitch.global/c69e6b36-58be-401d-935f-b51f0445d0ed/think.glb?v=1723483990098',
-            shake: 'https://cdn.glitch.global/c69e6b36-58be-401d-935f-b51f0445d0ed/shake.glb?v=1723483989569',
-            listen: 'https://cdn.glitch.global/c69e6b36-58be-401d-935f-b51f0445d0ed/listen.glb?v=1723483991275',
-            dance: 'https://cdn.glitch.global/c69e6b36-58be-401d-935f-b51f0445d0ed/dance.glb?v=1723483988775'
-        };
+        // Using a single, publicly available and reliable model with multiple animations
+        const avatarUrl = 'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
         const GEMINI_API_KEY = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
         const GEMINI_FLASH_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
         const GEMINI_TTS_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${GEMINI_API_KEY}`;
         
         // State variables
-        let scene, camera, renderer, avatar, mixer, jawBone, headBone;
+        let scene, camera, renderer, avatar, mixer;
         let animations = {};
         let currentAction;
         let clock = new THREE.Clock();
@@ -273,13 +264,19 @@
         let isWaving = false;
         let isPatrolling = false;
         let lastInteractionTime = Date.now();
-        const patrolTimeout = 30000; // 30 seconds of inactivity
-        const passiveIdleTimeout = 10000; // 10 seconds of inactivity before passive idle
+        
+        // Idle and Patrol timings from user requirements
+        const passiveIdleTimeout = 10000; // 10 seconds of no interaction for passive idle
+        const patrolTimeout = 30000; // 30 seconds of no interaction for patrol mode
         const patrolWaitTime = 10000; // 10 seconds wait at each patrol point
-        let idleTimer, patrolTimer;
+        
+        let patrolTimer, idleTimer; // Timers for the idle/patrol sequence
+        
         let mouse = new THREE.Vector2();
         let raycaster = new THREE.Raycaster();
         let speechRecognition;
+        let jawBone;
+        let headBone;
 
         // Tone.js setup for dance music
         let synth = new Tone.PolySynth().toDestination();
@@ -296,6 +293,14 @@
         const modal = document.getElementById('message-modal');
         const modalMessage = document.getElementById('modal-message');
         const modalClose = document.getElementById('modal-close');
+        
+        // Greetings from user requirements
+        const greetings = [
+            { initial: "Hello there!", followUp: "What can I do for you?" },
+            { initial: "Hi!", followUp: "How can I help?" },
+            { initial: "Hey!", followUp: "Nice to see you!" },
+            { initial: "Greetings!", followUp: "Feel free to ask me anything." }
+        ];
 
         // Helper functions
         function showModal(message) {
@@ -322,7 +327,6 @@
 
             speechRecognition.onstart = () => {
                 isListening = true;
-                playAction(animations.listen, THREE.LoopRepeat);
                 micButton.classList.add('pulse');
                 console.log("Listening...");
             };
@@ -338,7 +342,7 @@
                 micButton.classList.remove('pulse');
                 console.log("Listening ended.");
                 if (!isTalking && !isThinking && !isDancing) {
-                    playAction(animations.idle2, THREE.LoopRepeat);
+                    playAction('Idle', THREE.LoopRepeat);
                 }
             };
 
@@ -394,58 +398,61 @@
         // Load avatar model and all animations
         async function loadAssets() {
             const loader = new THREE.GLTFLoader();
-            const loadingPromises = [];
-            const avatarPromise = new Promise((resolve, reject) => {
-                loader.load(avatarUrl, (gltf) => {
-                    avatar = gltf.scene;
-                    avatar.scale.set(1.5, 1.5, 1.5);
-                    avatar.position.y = -0.01;
-                    avatar.castShadow = true;
-                    scene.add(avatar);
-                    mixer = new THREE.AnimationMixer(avatar);
-                    
-                    // Find bones for interaction
-                    jawBone = avatar.getObjectByName('mixamorigJaw');
-                    headBone = avatar.getObjectByName('mixamorigHead');
-                    
-                    // Add avatar's initial animations
-                    gltf.animations.forEach(clip => {
-                        animations[clip.name] = clip;
-                    });
-                    resolve();
-                }, xhr => {
-                    loadingText.textContent = `Loading Avatar... ${Math.round((xhr.loaded / xhr.total) * 50)}%`;
-                }, reject);
-            });
-            loadingPromises.push(avatarPromise);
-
-            const animationPromise = Promise.all(Object.keys(animationPaths).map(name => {
-                return new Promise((resolve, reject) => {
-                    loader.load(animationPaths[name], (gltf) => {
-                        animations[name] = gltf.animations[0];
-                        resolve();
-                    }, xhr => {
-                        // Update progress
-                        loadingText.textContent = `Loading Animations... ${Math.round(50 + (xhr.loaded / xhr.total) * 50)}%`;
-                    }, reject);
-                });
-            }));
-            loadingPromises.push(animationPromise);
-
             try {
-                await Promise.all(loadingPromises);
+                const gltf = await new Promise((resolve, reject) => {
+                    loader.load(avatarUrl, (loadedGltf) => {
+                        if (!loadedGltf) {
+                            reject(new Error("Loaded GLTF is null or undefined."));
+                        }
+                        resolve(loadedGltf);
+                    }, xhr => {
+                        loadingText.textContent = `Loading... ${Math.round((xhr.loaded / xhr.total) * 100)}%`;
+                    }, (error) => {
+                        console.error('An error occurred loading the models:', error);
+                        reject(new Error("Failed to load model. Please check the URL and network."));
+                    });
+                });
+
+                avatar = gltf.scene;
+                avatar.scale.set(0.5, 0.5, 0.5); // Adjust scale for the new model
+                avatar.position.y = -0.01;
+                avatar.castShadow = true;
+                scene.add(avatar);
+                mixer = new THREE.AnimationMixer(avatar);
                 
+                // Map the glTF animations to our custom names based on user's requirements
+                animations['idle2'] = gltf.animations.find(clip => clip.name === 'Idle'); // Active idle
+                animations['idle'] = gltf.animations.find(clip => clip.name === 'Idle'); // Passive idle (using same for now)
+                animations['walk'] = gltf.animations.find(clip => clip.name === 'Walking');
+                animations['dance'] = gltf.animations.find(clip => clip.name === 'Dance');
+                animations['wave'] = gltf.animations.find(clip => clip.name === 'Waving');
+                animations['talk'] = gltf.animations.find(clip => clip.name === 'Talking');
+                animations['think'] = gltf.animations.find(clip => clip.name === 'Thinking');
+                animations['shake'] = gltf.animations.find(clip => clip.name === 'Excited'); // Using Excited as a shake stand-in
+                animations['listening'] = gltf.animations.find(clip => clip.name === 'Idle'); // Using Idle as a stand-in for listening
+
+                if (!animations['idle2']) {
+                    throw new Error("Could not find 'Idle' animation in the model. Model may be incompatible.");
+                }
+
+                // Find bones for interaction
+                avatar.traverse(o => {
+                    if (o.isBone) {
+                        if (o.name === 'Head') headBone = o;
+                        if (o.name === 'Jaw') jawBone = o;
+                    }
+                });
+
                 loadingScreen.style.opacity = 0;
                 setTimeout(() => loadingScreen.style.display = 'none', 1000);
                 
-                playAction(animations.idle2, THREE.LoopRepeat);
+                startGreetingSequence();
                 setupInteractions();
-                startIdlePatrolTimer();
                 animate();
 
             } catch (error) {
                 console.error('An error occurred loading the models:', error);
-                showModal('Error loading avatar assets. Please try again later.');
+                showModal('Error loading avatar assets: ' + error.message);
             }
         }
 
@@ -492,7 +499,7 @@
             } else {
                 avatar.position.copy(avatar.userData.targetPosition);
                 isMoving = false;
-                playAction(animations.idle2, THREE.LoopRepeat);
+                playAction('idle2', THREE.LoopRepeat);
                 lastInteractionTime = Date.now();
             }
         }
@@ -514,8 +521,14 @@
         }
 
         // Animation playback and state management
-        function playAction(clip, loopMode = THREE.LoopOnce) {
+        function playAction(clipName, loopMode = THREE.LoopOnce) {
             if (!mixer) return;
+            const clip = animations[clipName];
+            if (!clip) {
+                console.warn(`Animation clip '${clipName}' not found. Playing idle2 instead.`);
+                playAction('idle2', THREE.LoopRepeat);
+                return;
+            }
             const newAction = mixer.clipAction(clip);
             newAction.setEffectiveWeight(1);
             if (currentAction) {
@@ -536,23 +549,17 @@
         }
         
         // --- Patrolling and Idle behavior ---
-        function startIdlePatrolTimer() {
-            clearTimeout(idleTimer);
+        function resetIdleSequence() {
+            lastInteractionTime = Date.now();
+            isPatrolling = false;
             clearTimeout(patrolTimer);
-            idleTimer = setTimeout(() => {
-                if (!isMoving && !isTalking && !isDancing) {
-                    playAction(animations.idle, THREE.LoopRepeat);
-                }
-                patrolTimer = setTimeout(() => {
-                    if (!isMoving && !isTalking && !isDancing) {
-                        isPatrolling = true;
-                        patrolCycle();
-                    }
-                }, 20000); // 20 seconds after passive idle
-            }, 10000); // 10 seconds of active idle
+            clearTimeout(idleTimer);
+            if (!isTalking && !isThinking && !isDancing && !isListening) {
+                playAction('idle2', THREE.LoopRepeat);
+            }
         }
 
-        function patrolCycle() {
+        function startPatrolCycle() {
             if (!isPatrolling) return;
             
             const randomX = (Math.random() - 0.5) * 10;
@@ -561,58 +568,52 @@
             
             moveAvatar(targetPosition);
 
-            setTimeout(() => {
+            patrolTimer = setTimeout(() => {
                 if (isPatrolling) {
-                    patrolCycle();
+                    startPatrolCycle();
                 }
             }, patrolWaitTime); // Wait 10 seconds at each point
         }
 
         function checkIdlePatrol() {
-            if (isPatrolling) return;
             const inactivityTime = Date.now() - lastInteractionTime;
             
             if (inactivityTime > patrolTimeout) {
-                isPatrolling = true;
-                patrolCycle();
+                if (!isPatrolling) {
+                    isPatrolling = true;
+                    startPatrolCycle();
+                }
             } else if (inactivityTime > passiveIdleTimeout) {
-                if (currentAction.getClip().name !== 'idle') {
-                    playAction(animations.idle, THREE.LoopRepeat);
+                if (currentAction.getClip().name !== animations['idle'].name) {
+                    playAction('idle', THREE.LoopRepeat);
                 }
             } else {
-                if (currentAction.getClip().name !== 'idle2') {
-                    playAction(animations.idle2, THREE.LoopRepeat);
+                if (currentAction.getClip().name !== animations['idle2'].name) {
+                    playAction('idle2', THREE.LoopRepeat);
                 }
             }
         }
 
         // --- Interaction Handlers ---
-        function resetIdleState() {
-            lastInteractionTime = Date.now();
-            isPatrolling = false;
-            clearTimeout(idleTimer);
-            clearTimeout(patrolTimer);
-            if (!isTalking && !isThinking && !isDancing && !isListening) {
-                playAction(animations.idle2, THREE.LoopRepeat);
-            }
-            if (isDancing) {
-                stopDance();
-            }
+        function reactToInteraction() {
+            resetIdleSequence();
+            isMoving = false;
+            // Face the camera immediately
+            faceCamera();
         }
-        
+
         // Event listeners
         function setupInteractions() {
             const ground = scene.children.find(obj => obj.geometry.type === 'PlaneGeometry');
 
             document.getElementById('avatar-canvas').addEventListener('click', (event) => {
-                resetIdleState();
+                reactToInteraction();
                 mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
                 mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
                 raycaster.setFromCamera(mouse, camera);
 
-                const intersects = raycaster.intersectObject(avatar);
-                if (intersects.length > 0) {
-                    // Clicked on the avatar
+                const intersectsAvatar = raycaster.intersectObject(avatar, true);
+                if (intersectsAvatar.length > 0) {
                     handleGreeting();
                     return;
                 }
@@ -624,7 +625,12 @@
             });
 
             document.getElementById('chat-ui-container').addEventListener('click', (event) => {
-                resetIdleState();
+                reactToInteraction();
+                handleGreeting();
+            });
+
+            chatInput.addEventListener('focus', () => {
+                reactToInteraction();
                 handleGreeting();
             });
 
@@ -649,45 +655,51 @@
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         }
 
-        function faceFront() {
-            const lookAtPosition = new THREE.Vector3(camera.position.x, avatar.position.y, camera.position.z);
-            avatar.lookAt(lookAtPosition);
+        function faceCamera() {
+            if (!avatar) return;
+            const cameraPosition = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+            avatar.lookAt(cameraPosition.x, avatar.position.y, cameraPosition.z);
         }
 
         function moveAvatar(target) {
-            resetIdleState();
+            reactToInteraction();
             isMoving = true;
             avatar.userData.targetPosition = target;
-            faceFront();
-            playAction(animations.walk, THREE.LoopRepeat);
+            playAction('walk', THREE.LoopRepeat);
         }
 
         async function handleGreeting() {
-            resetIdleState();
+            reactToInteraction();
             isWaving = true;
-            faceFront();
-            playAction(animations.wave, THREE.LoopOnce);
-            addMessage('Avatar', 'Hello!');
-            // Wait for wave animation to finish before talking
-            mixer.addEventListener('finished', (e) => {
-                if (e.action._clip.name === 'wave') {
-                    isWaving = false;
-                    speak('How can I help you?');
-                }
-            });
+            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+            
+            playAction('wave', THREE.LoopOnce);
+            await speak(randomGreeting.initial);
+
+            isWaving = false;
+            playAction('talk', THREE.LoopRepeat);
+            await speak(randomGreeting.followUp);
+
+            playAction('idle2', THREE.LoopRepeat);
         }
 
         function handleMic() {
-            resetIdleState();
-            faceFront();
+            reactToInteraction();
             if (speechRecognition) {
-                speechRecognition.start();
+                if (isListening) {
+                    speechRecognition.stop();
+                } else {
+                    playAction('talk', THREE.LoopRepeat);
+                    speak("Go ahead, I'm listening.", () => {
+                        playAction('listening', THREE.LoopRepeat);
+                        speechRecognition.start();
+                    });
+                }
             }
         }
         
         async function handleChat(prompt) {
-            resetIdleState();
-            faceFront();
+            reactToInteraction();
             prompt = prompt.trim();
             if (!prompt) return;
 
@@ -695,7 +707,7 @@
             chatInput.value = '';
 
             isThinking = true;
-            playAction(animations.think, THREE.LoopRepeat);
+            playAction('think', THREE.LoopRepeat);
 
             // Handle "dance" trigger from chat
             if (prompt.toLowerCase().includes('dance')) {
@@ -729,14 +741,16 @@
                 handleError();
             } finally {
                 if (!isTalking && !isDancing) {
-                    playAction(animations.idle2, THREE.LoopRepeat);
+                    playAction('idle2', THREE.LoopRepeat);
                 }
             }
         }
 
-        async function speak(text) {
+        async function speak(text, onendedCallback = () => {}) {
             isTalking = true;
-            playAction(animations.talk, THREE.LoopRepeat);
+            if (currentAction.getClip().name !== animations['talk'].name) {
+                playAction('talk', THREE.LoopRepeat);
+            }
             
             try {
                 const ttsPayload = {
@@ -767,8 +781,9 @@
                         isTalking = false;
                         lastInteractionTime = Date.now();
                         if (!isDancing) {
-                            playAction(animations.idle2, THREE.LoopRepeat);
+                            playAction('idle2', THREE.LoopRepeat);
                         }
+                        onendedCallback();
                     };
                 } else {
                     throw new Error('TTS response missing audio data');
@@ -781,13 +796,17 @@
         }
 
         function handleError() {
-            playAction(animations.shake, THREE.LoopOnce);
+            playAction('shake', THREE.LoopOnce);
             showModal("An error occurred. Please try again.");
-            mixer.addEventListener('finished', (e) => {
-                if (e.action._clip.name === 'shake') {
-                    playAction(animations.idle2, THREE.LoopRepeat);
-                }
-            }, { once: true });
+            if (animations['shake']) {
+                mixer.addEventListener('finished', (e) => {
+                    if (e.action._clip.name === animations['shake'].name) {
+                        playAction('idle2', THREE.LoopRepeat);
+                    }
+                }, { once: true });
+            } else {
+                playAction('idle2', THREE.LoopRepeat);
+            }
         }
 
         // --- Dance Mode Logic ---
@@ -813,23 +832,26 @@
         }
 
         function handleDance() {
-            resetIdleState();
-            faceFront();
+            reactToInteraction();
             isDancing = true;
-            playAction(animations.dance, THREE.LoopOnce);
+            playAction('dance', THREE.LoopOnce);
             startDanceMusic();
             
-            mixer.addEventListener('finished', (e) => {
-                if (e.action._clip.name === 'dance') {
-                    stopDance();
-                }
-            }, { once: true });
+            if (animations['dance']) {
+                mixer.addEventListener('finished', (e) => {
+                    if (e.action._clip.name === animations['dance'].name) {
+                        stopDance();
+                    }
+                }, { once: true });
+            } else {
+                stopDance();
+            }
         }
         
         function stopDance() {
             isDancing = false;
             stopDanceMusic();
-            playAction(animations.idle2, THREE.LoopRepeat);
+            playAction('idle2', THREE.LoopRepeat);
         }
         
         // Audio helper functions
