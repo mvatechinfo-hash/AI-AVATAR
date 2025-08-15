@@ -626,11 +626,15 @@
                 utterance.volume = 1;
 
                 const voices = synth.getVoices();
-                const voice = voices.find(v => v.name.includes("Google US English"));
-                if (voice) {
-                    utterance.voice = voice;
-                }
+                const maleVoice = voices.find(v => v.name.includes("Male") && v.lang.includes("en"));
                 
+                if (maleVoice) {
+                    utterance.voice = maleVoice;
+                    console.log(`Using male voice: ${maleVoice.name}`);
+                } else {
+                    console.warn("Male voice not found. Using default voice.");
+                }
+
                 utterance.onstart = () => {
                      console.log("Speech started. Playing talk animation.");
                      if (currentAction && currentAction.getClip().name !== animationNames.wave && !isGreeting) {
@@ -673,8 +677,9 @@
 
         function onMouseMove(event) {
             lastMouseMovementTime = Date.now();
-            if (avatar && currentAction && currentAction.getClip().name !== animationNames.idle2 && currentAction.getClip().name !== animationNames.talk && !isMoving && !isTurning) {
-                playAction(animationNames.idle2, THREE.LoopRepeat);
+            if (timeSinceLastMouseMovement > MOUSE_IDLE_TIMEOUT && currentAction && currentAction.getClip().name === animationNames.idle2) {
+                 playAction(animationNames.idle, THREE.LoopRepeat);
+                 lastInteractionTime = Date.now();
             }
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
