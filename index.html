@@ -1,14 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI-AVATAR</title>
 
+    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <!-- Three.js and GLTFLoader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Tone.js for audio -->
+    <script src="https://cdn.jsdelivr.net/npm/tone@14.7.58/build/Tone.js"></script>
+
+    <!-- Inter Font and custom styles -->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
         body {
             font-family: 'Inter', sans-serif;
             margin: 0;
@@ -17,11 +29,16 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            color: white;
         }
+
         canvas {
             display: block;
             touch-action: none;
+            width: 100vw;
+            height: 100vh;
         }
+
         .chat-ui-container {
             position: absolute;
             bottom: 20px;
@@ -33,742 +50,529 @@
             z-index: 10;
             display: flex;
             flex-direction: column;
-            background-color: rgba(31, 41, 55, 0.8);
+            background-color: rgba(31, 41, 55, 0.9);
             border-radius: 1rem;
-            backdrop-filter: blur(5px);
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
         }
-        #chat-history {
+
+        .chat-ui-container.collapsed {
+            width: 60px;
+            height: 60px;
+            bottom: 20px;
+            right: 20px;
+            top: auto;
+            border-radius: 9999px;
+            padding: 0;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .chat-messages {
             flex-grow: 1;
             overflow-y: auto;
-            padding: 1rem;
+            padding-right: 0.5rem;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+            display: flex;
+            flex-direction: column-reverse;
+        }
+
+        .chat-messages::-webkit-scrollbar {
+            display: none;
+        }
+
+        .message {
+            margin-bottom: 0.75rem;
+            padding: 0.75rem;
             border-radius: 0.75rem;
-            background-color: #1f2937;
-            margin-bottom: 1rem;
+            word-wrap: break-word;
         }
-        .chat-message {
-            margin-bottom: 1rem;
-            max-width: 80%;
-            padding: 0.75rem 1rem;
-            border-radius: 1.5rem;
-            line-height: 1.5;
-        }
+
         .user-message {
-            background-color: #3b82f6;
+            background-color: #3B82F6;
             color: white;
-            align-self: flex-end;
             margin-left: auto;
+            max-width: 80%;
+            border-bottom-right-radius: 0;
         }
+
         .bot-message {
-            background-color: #4b5563;
+            background-color: #4B5563;
             color: white;
-            align-self: flex-start;
             margin-right: auto;
+            max-width: 80%;
+            border-bottom-left-radius: 0;
         }
-        .listening-button {
-            animation: pulse 1.5s infinite;
+
+        .input-container {
+            display: flex;
+            padding-top: 1rem;
         }
-        @keyframes pulse {
-            0%, 100% {
-                transform: scale(1);
-                box-shadow: 0 0 0 rgba(255, 255, 255, 0.7);
+
+        .input-field {
+            flex-grow: 1;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid #4B5563;
+            background-color: #374151;
+            color: white;
+            margin-right: 0.5rem;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #6B7280;
+        }
+
+        .action-button {
+            background-color: #3B82F6;
+            color: white;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .action-button:hover {
+            background-color: #2563EB;
+        }
+
+        .action-button.mic-button {
+            background-color: #EF4444;
+        }
+
+        .action-button.mic-button:hover {
+            background-color: #DC2626;
+        }
+
+        .control-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+        }
+
+        .control-button {
+            width: 48px;
+            height: 48px;
+            background: rgba(31, 41, 55, 0.9);
+            border: 1px solid #4B5563;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s ease;
+        }
+
+        .control-button:hover {
+            background: rgba(55, 65, 81, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #111827;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 0.5s ease;
+        }
+
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #3B82F6;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
             }
-            50% {
-                transform: scale(1.1);
-                box-shadow: 0 0 20px rgba(255, 255, 255, 1);
+
+            100% {
+                transform: rotate(360deg);
             }
+        }
+
+        .listening-pulse {
+            animation: pulse-border 1.5s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(255, 255, 255, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+            }
+        }
+        
+        .message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(31, 41, 55, 0.95);
+            padding: 2rem;
+            border-radius: 1rem;
+            color: white;
+            text-align: center;
+            z-index: 20;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+
+        .voice-selector-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
         }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
-            }
-        }
-    </script>
 </head>
-<body class="bg-gray-900 text-white">
 
-    <div id="canvas-container" class="fixed inset-0 z-0"></div>
+<body>
 
-    <div id="loading-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 transition-opacity duration-500">
-        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
-        <p class="mt-4 text-gray-300">Loading 3D model...</p>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-spinner mb-4"></div>
+        <div id="loading-text">Loading... 0%</div>
     </div>
 
-    <div id="chat-ui" class="chat-ui-container hidden">
-        <div id="chat-history" class="mb-4"></div>
-        <div class="flex flex-col w-full space-y-2">
-            <div class="flex space-x-2 w-full">
-                <button id="mic-button" class="flex-grow bg-gray-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-gray-700 transition-colors duration-200 shadow-md flex items-center justify-center">
-                    <i class="fas fa-microphone"></i>
-                </button>
-                <button id="dance-button" class="flex-grow bg-purple-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-purple-700 transition-colors duration-200 shadow-md flex items-center justify-center">
-                    <i class="fas fa-music"></i>
-                </button>
-            </div>
-            <div class="flex space-x-2 w-full">
-                <input type="text" id="chat-input" placeholder="Type your message..." class="flex-grow p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <button id="send-button" class="flex-grow bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-md">
-                    Send
-                </button>
-            </div>
+    <!-- Chat UI -->
+    <div class="chat-ui-container" id="chat-ui-container">
+        <div class="flex justify-between items-center p-2 rounded-t-xl cursor-pointer bg-gray-700" id="chat-header">
+            <span class="text-white font-bold">Chat with AI</span>
+            <button id="close-chat" class="text-white hover:text-gray-400 focus:outline-none">
+                <i class="fas fa-minus"></i>
+            </button>
+        </div>
+        <div class="chat-messages p-4" id="chat-messages">
+            <!-- Messages will be appended here -->
+        </div>
+        <div class="input-container p-4">
+            <input type="text" id="chat-input" class="input-field rounded-full" placeholder="Type a message...">
+            <button id="mic-button" class="action-button mic-button rounded-full">
+                <i class="fas fa-microphone"></i>
+            </button>
+            <button id="send-button" class="action-button rounded-full ml-2">
+                <i class="fas fa-paper-plane"></i>
+            </button>
         </div>
     </div>
 
+    <!-- Control Buttons -->
+    <div class="control-buttons">
+        <button id="dance-button" class="control-button">
+            <i class="fas fa-music"></i>
+        </button>
+    </div>
+
+    <!-- Custom Message Box -->
+    <div id="message-box" class="message-box">
+        <p id="message-box-text"></p>
+        <button id="message-box-close" class="mt-4 px-4 py-2 bg-blue-500 rounded-lg">OK</button>
+    </div>
+
+    <!-- JavaScript logic -->
     <script type="module">
-        import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        // API key and model name
+        const API_KEY = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
+        const TEXT_MODEL = "gemini-2.5-flash-preview-05-20";
 
-        let scene, camera, renderer, avatar, mixer;
-        const clock = new THREE.Clock();
-        const raycaster = new THREE.Raycaster();
-        const pointer = new THREE.Vector2();
-        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-
-        let leftEye, rightEye, headBone, jawBone;
-        const mouse = new THREE.Vector2();
-        const lookAtTarget = new THREE.Vector3();
-
-        const leftEyeBoneName = 'Eye_Left';
-        const rightEyeBoneName = 'Eye_Right';
-        const headBoneName = 'HeadTop_End_end';
-        const jawBoneName = 'Jaw';
-        const rotationLimit = 0.5;
-
-        const animationNames = {
+        // Global variables for Three.js
+        let scene, camera, renderer, controls;
+        let avatar, mixer;
+        let animations = {};
+        let animationNames = {
             idle: 'idle',
             idle2: 'idle2',
-            wave: 'wave',
-            talk: 'talk',
-            listening: 'listen',
-            thinking: 'think',
-            point: 'point',
-            nod: 'nod',
-            shake: 'shake',
             walk: 'walk',
-            happy: 'happy',
+            talk: 'talk',
+            wave: 'wave',
             dance: 'dance',
+            think: 'think',
+            shake: 'shake',
+            listen: 'listen'
         };
-
-        const greetings = [
-            { initial: "Hello there!", followUp: "What can I do for you?" },
-            { initial: "Hi!", followUp: "How can I help?" },
-            { initial: "Hey!", followUp: "Nice to see you!" },
-            { initial: "Greetings!", followUp: "Feel free to ask me anything." }
-        ];
-
-        let currentAction;
-        const actions = {};
-
-        let isGreeting = false;
+        let clock = new THREE.Clock();
+        let jawBone;
+        let isTalking = false;
         let isMoving = false;
         let isTurning = false;
-        let isPatrolling = false; // This is not used but kept for clarity
         let targetQuaternion = new THREE.Quaternion();
-        const turnDuration = 500;
-        let turnStartTime = 0;
+        let turnStartTime;
+        const turnDuration = 500; // ms
 
+        // Global variables for chat and interaction
+        let chatHistory = [];
+        let recognition;
+        let audioContext;
+        let idleTimer, passiveIdleTimer, patrolTimer;
+        const IDLE_TIME = 10000;
+        const PASSIVE_IDLE_TIME = 20000;
+        const PATROL_INTERVAL = 10000;
+        let currentIdleState = 'active';
+        let maleVoice; // Web Speech API voice
+        let isDancing = false;
+        let isSpeaking = false;
+        let isListening = false;
         let lastInteractionTime = Date.now();
-        const IDLE_TIMEOUT_10 = 10 * 1000;
-        let lastMouseMovementTime = Date.now();
-        const MOUSE_IDLE_TIMEOUT = 5000;
 
+        // HTML elements
         const chatInput = document.getElementById('chat-input');
         const sendButton = document.getElementById('send-button');
+        const chatMessages = document.getElementById('chat-messages');
         const micButton = document.getElementById('mic-button');
         const danceButton = document.getElementById('dance-button');
+        const chatUIContainer = document.getElementById('chat-ui-container');
+        const closeChatButton = document.getElementById('close-chat');
         const loadingScreen = document.getElementById('loading-screen');
-        const chatUiContainer = document.getElementById('chat-ui');
-        const chatHistory = document.getElementById('chat-history');
-
-        let canvasContainer;
-
-        const synth = window.speechSynthesis;
-        let speechRecognition;
-        let isListening = false;
+        const loadingText = document.getElementById('loading-text');
+        const messageBox = document.getElementById('message-box');
+        const messageBoxText = document.getElementById('message-box-text');
+        const messageBoxClose = document.getElementById('message-box-close');
         
-        let danceLoop;
+        // Tone.js variables
+        let synth, loop;
 
-        init();
-        animate();
-
-        async function init() {
-            canvasContainer = document.getElementById('canvas-container');
-
+        // Initialize Three.js scene
+        function init() {
+            // Scene
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x111827);
 
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(0, 1.8, 3);
+            // Camera
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.5, 3);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            // Renderer
+            renderer = new THREE.WebGLRenderer({
+                antialias: true
+            });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
-            canvasContainer.appendChild(renderer.domElement);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 2;
+            controls.maxDistance = 6;
+            controls.minPolarAngle = Math.PI / 4;
+            controls.maxPolarAngle = Math.PI / 2;
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
             scene.add(ambientLight);
-
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(1, 2, 3).normalize();
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(2, 5, 3);
+            directionalLight.castShadow = true;
             scene.add(directionalLight);
 
-            const ground = new THREE.Mesh(
-                new THREE.PlaneGeometry(100, 100),
-                new THREE.MeshStandardMaterial({ color: 0x222222 })
-            );
+            // Ground plane
+            const groundGeometry = new THREE.PlaneGeometry(10, 10);
+            const groundMaterial = new THREE.ShadowMaterial({
+                opacity: 0.5
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
             ground.rotation.x = -Math.PI / 2;
             ground.position.y = -0.01;
+            ground.receiveShadow = true;
             scene.add(ground);
 
-            const loader = new GLTFLoader();
-            loader.load('./chatbot_avatar.glb', (gltf) => {
-                avatar = gltf.scene;
-                scene.add(avatar);
-                console.log("Avatar loaded and added to scene.");
+            // Load 3D model
+            const loader = new THREE.GLTFLoader();
 
-                avatar.position.z = 0;
-                avatar.position.y = 0;
+            // Loading Manager to track progress
+            const loadingManager = new THREE.LoadingManager();
+            loadingManager.onProgress = function(url, loaded, total) {
+                const progress = Math.round((loaded / total) * 100);
+                loadingText.innerText = `Loading... ${progress}%`;
+            };
 
-                findBones(avatar);
-
-                mixer = new THREE.AnimationMixer(avatar);
-                console.log('Found animations in GLB:', gltf.animations.map(clip => clip.name));
-                gltf.animations.forEach(clip => {
-                    const action = mixer.clipAction(clip);
-                    actions[clip.name] = action;
-                });
-                
-                mixer.addEventListener('finished', (event) => {
-                    if (event.action._clip.name === animationNames.dance) {
-                        stopDanceMusic(); // Stop music when dance animation finishes
-                        playAction(animationNames.idle2, THREE.LoopRepeat);
-                    }
-                });
-                
-                startGreetingSequence();
-                
-                faceCamera();
-
+            loadingManager.onLoad = function() {
+                // Hide loading screen after all assets are loaded
                 setTimeout(() => {
-                    loadingScreen.style.opacity = '0';
-                    setTimeout(() => {
-                        loadingScreen.classList.add('hidden');
-                        chatUiContainer.classList.remove('hidden');
-                    }, 500);
+                    loadingScreen.style.opacity = 0;
+                    loadingScreen.addEventListener('transitionend', () => loadingScreen.remove());
+                    // Start the idle sequence and greeting
+                    resetIdleTimers();
+                    playGreeting();
                 }, 500);
+            };
 
-            },
-            (xhr) => {
-                const percent = Math.round((xhr.loaded / xhr.total) * 100);
-                document.querySelector('#loading-screen p').innerText = `Loading: ${percent}%`;
-            },
-            (error) => {
-                console.error('An error occurred while loading the GLTF model:', error);
-                document.querySelector('#loading-screen p').innerText = 'Failed to load model. Please check the file path.';
-            });
+            const glbFiles = {
+                idle: 'https://raw.githubusercontent.com/ajh-dev/avatars/main/animations/idle.glb',
+                idle2: 'https://raw.githubusercontent.com/ajh-dev/avatars/main/animations/idle2.glb',
+                walk: 'https://raw.githubusercontent.com/ajh-dev/avatars/main/animations/walk.glb',
+                talk: 'https://raw.githubusercontent.com/ajh-dev/avatars/main/animations/talk.glb',
+                wave: 'https://raw.githubusercontent.com/ajh-dev/avatars/main/animations/wave.glb',
+                dance: 'https://raw.githubusercontent.com/ajh-dev/avatars/main/animations/dance.glb',
+                think: 'https://raw.githubusercontent.com/ajh-dev/avatars/main/animations/think.glb',
+                shake: 'https://raw.githubusercontent.com/ajh-dev/avatars/main/animations/shake.glb',
+                listen: 'https://raw.githubusercontent.com/ajh-dev/avatars/main/animations/listen.glb'
+            };
 
-            window.addEventListener('resize', onWindowResize);
-            window.addEventListener('mousemove', onMouseMove);
-            
-            chatInput.addEventListener('focus', startGreetingSequence);
-            
-            sendButton.addEventListener('click', onSendMessage);
-            chatInput.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter') {
-                    onSendMessage();
-                }
-            });
-            
-            renderer.domElement.addEventListener('mousedown', onCanvasClick, false);
-            
-            micButton.addEventListener('click', toggleSpeechRecognition);
-            
-            danceButton.addEventListener('click', onDanceButtonClick);
-            initSpeechRecognition();
-        }
-        
-        function startGreetingSequence() {
-            console.log("startGreetingSequence called.");
-            if (isGreeting) {
-                console.log("Greeting sequence is already in progress. Aborting.");
-                return;
-            }
-            isGreeting = true;
-            
-            // Fix: Reset avatar position and face camera on greeting
-            reactToInteraction();
+            // Load each animation file and store its data
+            let loadedCount = 0;
+            const totalFiles = Object.keys(glbFiles).length;
 
-            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+            for (const name in glbFiles) {
+                loader.load(glbFiles[name], function(gltf) {
+                    if (name === 'idle') {
+                        avatar = gltf.scene;
+                        avatar.scale.set(0.7, 0.7, 0.7);
+                        avatar.position.y = 0;
+                        avatar.castShadow = true;
+                        scene.add(avatar);
 
-            console.log('Starting greeting sequence with wave animation...');
-            playAction(animationNames.wave, THREE.LoopOnce, 2); 
-            
-            speakText(randomGreeting.initial, () => {
-                playAction(animationNames.talk, THREE.LoopRepeat);
-                speakText(randomGreeting.followUp, () => {
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
-                    isGreeting = false;
-                    resetIdleSequence();
+                        // Find the jaw bone for lip-syncing
+                        avatar.traverse(o => {
+                            if (o.isMesh) {
+                                o.castShadow = true;
+                                o.receiveShadow = true;
+                            }
+                            if (o.name === 'mixamorigJaw') {
+                                jawBone = o;
+                            }
+                        });
+
+                        mixer = new THREE.AnimationMixer(avatar);
+                    }
+                    animations[name] = gltf.animations[0];
+                    loadedCount++;
+                    const progress = Math.round((loadedCount / totalFiles) * 100);
+                    loadingManager.onProgress('', loadedCount, totalFiles);
+                }, undefined, function(error) {
+                    console.error('An error happened during loading:', error);
                 });
-            });
-        }
-
-        function initSpeechRecognition() {
-            console.log('Initializing speech recognition...');
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (SpeechRecognition) {
-                console.log('Speech Recognition API is supported by this browser.');
-                speechRecognition = new SpeechRecognition();
-                speechRecognition.continuous = false;
-                speechRecognition.interimResults = false;
-                speechRecognition.lang = 'en-US';
-
-                speechRecognition.onstart = () => {
-                    isListening = true;
-                    micButton.classList.add('listening-button');
-                    console.log('Speech recognition started...');
-                };
-
-                speechRecognition.onresult = (event) => {
-                    const transcript = event.results[0][0].transcript;
-                    if (transcript && transcript.trim() !== '') {
-                        chatInput.value = transcript;
-                        onSendMessage();
-                    }
-                    speechRecognition.stop();
-                };
-
-                speechRecognition.onerror = (event) => {
-                    console.error('Speech recognition error:', event.error);
-                    isListening = false;
-                    micButton.classList.remove('listening-button');
-                };
-
-                speechRecognition.onend = () => {
-                    micButton.classList.remove('listening-button');
-                    isListening = false;
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
-                    resetIdleSequence();
-                };
-            } else {
-                console.warn('Speech Recognition API is not supported in this browser. The microphone button will be hidden.');
-                micButton.style.display = 'none';
-            }
-        }
-        
-        function toggleSpeechRecognition() {
-            console.log('Microphone button clicked. isListening:', isListening);
-            if (speechRecognition) {
-                if (isListening) {
-                    speechRecognition.stop();
-                } else {
-                    reactToInteraction();
-                    // Mic button logic already centers and faces camera via reactToInteraction
-                    playAction(animationNames.talk, THREE.LoopRepeat);
-                    speakText("Go ahead, I'm listening.", () => {
-                         playAction(animationNames.listening, THREE.LoopRepeat);
-                         if (speechRecognition) {
-                             speechRecognition.start();
-                         }
-                    });
-                }
-            }
-        }
-        
-        async function playDanceMusic() {
-            await Tone.start();
-            console.log("Audio context started. Playing dance music.");
-
-            const drum = new Tone.MembraneSynth().toDestination();
-            const bass = new Tone.Synth({
-                oscillator: { type: "square" },
-                envelope: {
-                    attack: 0.001,
-                    decay: 0.2,
-                    sustain: 0.1,
-                    release: 0.2
-                }
-            }).toDestination();
-            
-            danceLoop = new Tone.Sequence((time, note) => {
-                if (note === 'C1') {
-                    drum.triggerAttackRelease(note, "8n", time);
-                } else if (note) {
-                    bass.triggerAttackRelease(note, "8n", time);
-                }
-            }, ['C1', null, 'C1', null, null, 'C1', null, null, 'C1', null, 'C1', null, null, 'C1', null, 'C1']).start(0);
-
-            Tone.Transport.start();
-        }
-
-        function stopDanceMusic() {
-            if (danceLoop) {
-                danceLoop.stop();
-                danceLoop.dispose(); // Clean up the loop
-                danceLoop = null;
-            }
-            if (Tone.Transport.state === 'started') {
-                Tone.Transport.stop();
-            }
-            console.log("Dance music stopped.");
-        }
-
-        function onDanceButtonClick() {
-            if (!avatar || isGreeting) return;
-            reactToInteraction();
-            playAction(animationNames.dance, THREE.LoopOnce);
-            playDanceMusic();
-        }
-
-        function reactToInteraction() {
-            if (!avatar) return;
-            resetIdleSequence();
-            isMoving = false;
-            isTurning = false;
-            isPatrolling = false;
-            // Fix: Position avatar at center and face camera for any interaction
-            avatar.position.set(0, 0, 0);
-            faceCamera();
-        }
-        
-        function handleAvatarInteraction() {
-            console.log('handleAvatarInteraction called.');
-            startGreetingSequence();
-        }
-
-        function onCanvasClick(event) {
-            console.log('onCanvasClick called.');
-            if (isGreeting) return;
-            const rect = renderer.domElement.getBoundingClientRect();
-            pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-            raycaster.setFromCamera(pointer, camera);
-
-            const intersectsAvatar = raycaster.intersectObject(avatar, true);
-            if (intersectsAvatar.length > 0) {
-                console.log('Avatar clicked!');
-                handleAvatarInteraction();
-                return;
             }
 
-            const intersects = new THREE.Vector3();
-            if (raycaster.ray.intersectPlane(groundPlane, intersects)) {
-                console.log('Ground clicked at:', intersects);
-                reactToInteraction();
-                isPatrolling = false;
-                setNewTarget(intersects);
-            }
+            // Web Speech API Voice Selection
+            window.speechSynthesis.onvoiceschanged = () => {
+                const voices = window.speechSynthesis.getVoices();
+                maleVoice = voices.find(voice => voice.name.includes("Male") || voice.name.includes("Google US English"));
+            };
+
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            document.addEventListener('mousedown', onDocumentMouseDown, false);
+
+            animate();
         }
 
-        function setNewTarget(newPosition) {
-            if (!avatar || isGreeting) return;
-
-            if (avatar.position.distanceTo(newPosition) < 0.05) {
-                isMoving = false;
-                playAction(animationNames.idle, THREE.LoopRepeat);
-                return;
-            }
-
-            avatar.userData.targetPosition = newPosition;
-
-            const direction = new THREE.Vector3().subVectors(newPosition, avatar.position).normalize();
-            targetQuaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
-
-            isTurning = true;
-            turnStartTime = Date.now();
-
-            isMoving = true;
-            playAction(animationNames.walk, THREE.LoopRepeat);
-        }
-
-        function faceCamera() {
-            if (!avatar) return;
-            const cameraPosition = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
-            avatar.lookAt(cameraPosition.x, avatar.position.y, cameraPosition.z);
-        }
-
-        function playAction(name, loop = THREE.LoopOnce, timeScale = 1) {
-            console.log(`Attempting to play animation: ${name}. Current action is: ${currentAction ? currentAction.getClip().name : 'none'}`);
-            
-            if (isGreeting && name !== animationNames.wave && name !== animationNames.talk) {
-                console.log(`Aborting playAction(${name}) because greeting sequence is active.`);
-                return;
-            }
-
-            if (avatar && actions[name]) {
-                const newAction = actions[name];
-                
-                // Fix: Stop music if a new action is triggered while dancing
-                if (currentAction && currentAction.getClip().name === animationNames.dance) {
-                    stopDanceMusic();
-                }
-
-                if (currentAction && currentAction !== newAction) {
-                    currentAction.fadeOut(0.5); 
-                }
-
-                newAction.reset()
-                         .setEffectiveTimeScale(timeScale)
-                         .setEffectiveWeight(1)
-                         .setLoop(loop)
-                         .fadeIn(0.5)
-                         .play();
-                currentAction = newAction;
-                console.log(`Successfully transitioned to animation: ${name}`);
-
-            } else if (avatar) {
-                console.warn(`Animation clip '${name}' not found.`);
-            }
-        }
-        
-        function onSendMessage() {
-            console.log('Send button clicked. Starting message process.');
-            const message = chatInput.value.trim();
-            if (message) {
-                reactToInteraction();
-                chatInput.value = '';
-
-                appendMessage(message, 'user');
-
-                isMoving = false;
-                isPatrolling = false;
-                faceCamera();
-                playAction(animationNames.thinking, THREE.LoopRepeat);
-
-                generateResponseFromAPI(message);
-            }
-        }
-
-        function appendMessage(message, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('chat-message');
-            messageDiv.classList.add(sender === 'user' ? 'user-message' : 'bot-message');
-            messageDiv.innerText = message;
-            chatHistory.appendChild(messageDiv);
-            chatHistory.scrollTop = chatHistory.scrollHeight;
-        }
-
-        async function generateResponseFromAPI(userPrompt) {
-            if (userPrompt.toLowerCase().trim() === 'dance') {
-                playAction(animationNames.dance, THREE.LoopOnce);
-                playDanceMusic();
-                return;
-            }
-
-            const apiKey = "";
-            if (!apiKey) {
-                console.error("API key is missing. Please add your API key to the code.");
-                appendMessage('Error: API key is missing. Please add it to the code to enable the conversation.', 'bot');
-                playAction(animationNames.shake);
-                return;
-            }
-            
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-            const chatHistoryContent = [];
-            const messages = chatHistory.querySelectorAll('.chat-message');
-            messages.forEach(msg => {
-                const role = msg.classList.contains('user-message') ? 'user' : 'model';
-                chatHistoryContent.push({ role: role, parts: [{ text: msg.innerText }] });
-            });
-
-            chatHistoryContent.push({ role: "user", parts: [{ text: userPrompt }] });
-
-            const payload = { contents: chatHistoryContent };
-
-            let retries = 0;
-            const maxRetries = 5;
-            let delay = 1000;
-
-            while (retries < maxRetries) {
-                try {
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (!response.ok) {
-                        if (response.status === 403) {
-                            console.error('API call failed with status 403. Please check your API key.');
-                            playAction(animationNames.shake);
-                            appendMessage('API Error: Please check your API key and permissions.', 'bot');
-                            return;
-                        }
-                        if (response.status === 429) {
-                            console.warn(`API call failed with status 429. Retrying in ${delay}ms...`);
-                            await new Promise(res => setTimeout(res, delay));
-                            delay *= 2;
-                            retries++;
-                            continue;
-                        }
-                        console.error(`API call failed with status: ${response.status}`);
-                        playAction(animationNames.shake);
-                        appendMessage('API Error: An unexpected error occurred.', 'bot');
-                        return;
-                    }
-
-                    const result = await response.json();
-                    if (result.candidates && result.candidates.length > 0 &&
-                        result.candidates[0].content && result.candidates[0].content.parts &&
-                        result.candidates[0].content.parts.length > 0) {
-                        const responseText = result.candidates[0].content.parts[0].text;
-
-                        appendMessage(responseText, 'bot');
-
-                        const lowerCaseText = responseText.toLowerCase();
-                        if (lowerCaseText.includes('dance')) {
-                            playAction(animationNames.dance, THREE.LoopOnce);
-                            playDanceMusic();
-                        } else if (lowerCaseText.includes('happy') || lowerCaseText.includes('awesome')) {
-                            playAction(animationNames.happy);
-                        } else if (lowerCaseText.includes('yes') || lowerCaseText.includes('correct')) {
-                            playAction(animationNames.nod);
-                        } else if (lowerCaseText.includes('no') || lowerCaseText.includes('incorrect')) {
-                            playAction(animationNames.shake);
-                        } else if (lowerCaseText.includes('important') || lowerCaseText.includes('note')) {
-                            playAction(animationNames.point);
-                        }
-
-                        playAction(animationNames.talk, THREE.LoopRepeat);
-                        speakText(responseText);
-                    } else {
-                        console.error("Unexpected API response structure.");
-                        playAction(animationNames.shake);
-                        appendMessage('API Error: The response was empty or malformed.', 'bot');
-                        return;
-                    }
-                    return;
-                } catch (error) {
-                    console.error('An error occurred during API call:', error);
-                    playAction(animationNames.shake);
-                    appendMessage('API Error: An error occurred during the API call.', 'bot');
-                    return;
-                }
-            }
-            if (retries === maxRetries) {
-                console.error("Max retries reached. API call failed.");
-                playAction(animationNames.shake);
-                appendMessage('API Error: Could not connect to the server after multiple retries.', 'bot');
-            }
-        }
-        
-        function speakText(text, onEndCallback = null) {
-            console.log("Speaking: ", text);
-            if ('speechSynthesis' in window) {
-                if (synth.speaking) {
-                    synth.cancel();
-                }
-
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.pitch = 1;
-                utterance.rate = 1;
-                utterance.volume = 1;
-
-                const voices = synth.getVoices();
-                const maleVoice = voices.find(v => v.name.includes("Male") && v.lang.includes("en"));
-                
-                if (maleVoice) {
-                    utterance.voice = maleVoice;
-                    console.log(`Using male voice: ${maleVoice.name}`);
-                } else {
-                    console.warn("Male voice not found. Using default voice.");
-                }
-
-                utterance.onend = () => {
-                    console.log("Speech finished. Calling onEndCallback.");
-                    if (onEndCallback) {
-                        onEndCallback();
-                    } else {
-                        playAction(animationNames.idle2, THREE.LoopRepeat);
-                    }
-                    resetIdleSequence();
-                };
-                
-                utterance.onerror = (e) => {
-                    console.error("SpeechSynthesisUtterance.onerror", e);
-                     if (onEndCallback) onEndCallback();
-                };
-
-                synth.speak(utterance);
-            } else {
-                 console.warn("Speech Synthesis is not supported in this browser. Skipping speech.");
-                 if (onEndCallback) onEndCallback();
-            }
-        }
-
-        function findBones(model) {
-            model.traverse((object) => {
-                if (object.isBone) {
-                    if (object.name === leftEyeBoneName) leftEye = object;
-                    if (object.name === rightEyeBoneName) rightEye = object;
-                    if (object.name === headBoneName) headBone = object;
-                    if (object.name === jawBoneName) jawBone = object;
-                }
-            });
-        }
-
-        function onMouseMove(event) {
-            if (isGreeting) return;
-            lastMouseMovementTime = Date.now();
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-        }
-
+        // Handle window resize
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        function resetIdleSequence() {
-            lastInteractionTime = Date.now();
-            isMoving = false;
+        // Handle mouse movement for mouse-look
+        function onMouseMove(event) {
+            if (!avatar) return;
+            const mouse = new THREE.Vector2();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
+            vector.unproject(camera);
+            const dir = vector.sub(camera.position).normalize();
+            const distance = -camera.position.y / dir.y;
+            const pos = camera.position.clone().add(dir.multiplyScalar(distance));
+
+            const target = new THREE.Vector3(pos.x, avatar.position.y + 1.2, pos.z);
+            avatar.lookAt(target);
         }
 
+        // Handle mouse click on ground for movement
+        function onDocumentMouseDown(event) {
+            resetIdleTimers();
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObjects(scene.children);
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                if (intersect.object.geometry.type === 'PlaneGeometry') {
+                    moveAvatarTo(intersect.point);
+                }
+            }
+        }
+
+        // Move avatar to a new position
+        function moveAvatarTo(targetPosition) {
+            if (!avatar || isDancing || isSpeaking || isListening) return;
+            
+            isMoving = true;
+            avatar.userData.targetPosition = targetPosition;
+
+            // Face the new target position before moving
+            const direction = new THREE.Vector3().subVectors(targetPosition, avatar.position).normalize();
+            const angle = Math.atan2(direction.x, direction.z);
+            targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+
+            isTurning = true;
+            turnStartTime = Date.now();
+            playAction(animationNames.walk, THREE.LoopRepeat);
+        }
+
+        // Play an animation action
+        function playAction(name, loopMode = THREE.LoopOnce) {
+            if (!mixer || !animations[name]) return;
+
+            mixer.stopAllAction();
+            const action = mixer.clipAction(animations[name]);
+            action.setLoop(loopMode);
+            action.clampWhenFinished = true;
+            action.play();
+            return action;
+        }
+
+        // Animate loop
         function animate() {
             requestAnimationFrame(animate);
-
-            if (!avatar || !mixer) {
-                if (mixer) mixer.update(clock.getDelta());
-                renderer.render(scene, camera);
-                return;
-            }
-            
             const delta = clock.getDelta();
 
-            const timeSinceLastInteraction = Date.now() - lastInteractionTime;
-            
-            if (!isGreeting && timeSinceLastInteraction > IDLE_TIMEOUT_10 && currentAction && currentAction.getClip().name === animationNames.idle2) {
-                 playAction(animationNames.idle, THREE.LoopRepeat);
-            }
-
-            if (!isGreeting && currentAction && currentAction.getClip().name === animationNames.idle2 && leftEye && rightEye && headBone) {
-                lookAtTarget.set(mouse.x, mouse.y, 1).unproject(camera);
-
-                const leftEyePos = new THREE.Vector3().setFromMatrixPosition(leftEye.matrixWorld);
-                const rightEyePos = new THREE.Vector3().setFromMatrixPosition(rightEye.matrixWorld);
-
-                const leftEyeQuaternion = new THREE.Quaternion().setFromRotationMatrix(
-                    new THREE.Matrix4().lookAt(leftEyePos, lookAtTarget, leftEye.up)
-                );
-                const rightEyeQuaternion = new THREE.Quaternion().setFromRotationMatrix(
-                    new THREE.Matrix4().lookAt(rightEyePos, lookAtTarget, rightEye.up)
-                );
-
-                leftEye.quaternion.slerp(leftEyeQuaternion, rotationLimit);
-                rightEye.quaternion.slerp(rightEyeQuaternion, rotationLimit);
-
-                const headQuaternion = new THREE.Quaternion().setFromRotationMatrix(
-                    new THREE.Matrix4().lookAt(headBone.position, lookAtTarget, headBone.up)
-                );
-                headBone.quaternion.slerp(headQuaternion, rotationLimit * 0.5);
-            }
-
-            if (synth.speaking && jawBone) {
+            // Lip-syncing
+            if (isTalking && jawBone) {
                 const time = Date.now() * 0.005;
                 const jawRotation = Math.sin(time) * 0.05 + 0.02;
                 jawBone.rotation.x = -jawRotation;
@@ -776,7 +580,8 @@
                 jawBone.rotation.x = 0;
             }
             
-            if (isMoving) {
+            // Movement logic
+            if (isMoving && avatar) {
                 const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
 
                 if (distance > 0.05) {
@@ -798,10 +603,365 @@
                     lastInteractionTime = Date.now();
                 }
             }
+
+            // Idle and Patrol logic
+            if (!isMoving && !isSpeaking && !isDancing && !isListening) {
+                const currentTime = Date.now();
+                if (currentIdleState === 'active' && currentTime - lastInteractionTime > IDLE_TIME) {
+                    playAction(animationNames.idle, THREE.LoopRepeat);
+                    currentIdleState = 'passive';
+                    lastInteractionTime = currentTime;
+                } else if (currentIdleState === 'passive' && currentTime - lastInteractionTime > PASSIVE_IDLE_TIME) {
+                    startPatrol();
+                    currentIdleState = 'patrol';
+                    lastInteractionTime = currentTime;
+                }
+            }
             
             if (mixer) mixer.update(delta);
+            controls.update();
             renderer.render(scene, camera);
         }
+
+        // Reset all idle timers and animations
+        function resetIdleTimers() {
+            clearTimeout(idleTimer);
+            clearTimeout(passiveIdleTimer);
+            clearInterval(patrolTimer);
+            lastInteractionTime = Date.now();
+            if (currentIdleState !== 'active' && !isSpeaking && !isMoving && !isDancing && !isListening) {
+                playAction(animationNames.idle2, THREE.LoopRepeat);
+            }
+            currentIdleState = 'active';
+            isMoving = false;
+        }
+
+        // Start patrol mode
+        function startPatrol() {
+            clearInterval(patrolTimer);
+            patrolTimer = setInterval(() => {
+                const x = Math.random() * 8 - 4;
+                const z = Math.random() * 8 - 4;
+                moveAvatarTo(new THREE.Vector3(x, 0, z));
+            }, PATROL_INTERVAL);
+        }
+
+        // Show a custom message box
+        function showMessageBox(message) {
+            messageBoxText.innerText = message;
+            messageBox.style.display = 'block';
+        }
+
+        // Handle closing the message box
+        messageBoxClose.onclick = () => {
+            messageBox.style.display = 'none';
+        };
+
+        // Handle avatar facing forward on interaction
+        function faceForward() {
+            if (!avatar) return;
+            const fixedPosition = new THREE.Vector3(0, 0, 0);
+            const cameraPosition = new THREE.Vector3(0, 1.5, 3);
+
+            avatar.position.copy(fixedPosition);
+            avatar.rotation.y = Math.PI;
+
+            camera.position.copy(cameraPosition);
+            camera.lookAt(fixedPosition);
+        }
+
+        // Event listeners for UI elements
+        chatUIContainer.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (chatUIContainer.classList.contains('collapsed')) {
+                chatUIContainer.classList.remove('collapsed');
+                closeChatButton.innerHTML = '<i class="fas fa-minus"></i>';
+                faceForward();
+                playGreeting();
+            }
+            resetIdleTimers();
+        });
+
+        chatHeader.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (chatUIContainer.classList.contains('collapsed')) {
+                chatUIContainer.classList.remove('collapsed');
+                closeChatButton.innerHTML = '<i class="fas fa-minus"></i>';
+                faceForward();
+                playGreeting();
+            }
+            resetIdleTimers();
+        });
+
+        closeChatButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            chatUIContainer.classList.toggle('collapsed');
+            if (chatUIContainer.classList.contains('collapsed')) {
+                closeChatButton.innerHTML = '<i class="fas fa-comment"></i>';
+            } else {
+                closeChatButton.innerHTML = '<i class="fas fa-minus"></i>';
+            }
+        });
+        
+        // Greeting Logic
+        async function playGreeting() {
+            const greetings = ["Hello there!", "Hi!", "Hey!", "Greetings!"];
+            const followups = ["What can I do for you?", "How can I help?", "Nice to see you!", "Feel free to ask me anything."];
+            const greetingText = `${greetings[Math.floor(Math.random() * greetings.length)]} ${followups[Math.floor(Math.random() * followups.length)]}`;
+
+            playAction(animationNames.wave);
+            await new Promise(resolve => setTimeout(resolve, 1500)); // Wait for wave to finish
+            textToSpeech(greetingText);
+        }
+
+        // Handle chat input
+        chatInput.addEventListener('keydown', async (event) => {
+            if (event.key === 'Enter') {
+                const userMessage = chatInput.value.trim();
+                if (userMessage) {
+                    resetIdleTimers();
+                    faceForward();
+                    appendMessage('user', userMessage);
+                    chatInput.value = '';
+                    await getBotResponse(userMessage);
+                }
+            }
+        });
+
+        sendButton.addEventListener('click', async () => {
+            const userMessage = chatInput.value.trim();
+            if (userMessage) {
+                resetIdleTimers();
+                faceForward();
+                appendMessage('user', userMessage);
+                chatInput.value = '';
+                await getBotResponse(userMessage);
+            }
+        });
+
+        // Append messages to the chat UI
+        function appendMessage(sender, text) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
+            messageElement.textContent = text;
+            chatMessages.prepend(messageElement);
+        }
+
+        // Get bot response from Gemini API
+        async function getBotResponse(userMessage) {
+            // Check for a trigger word for dance mode
+            if (userMessage.toLowerCase().includes('dance')) {
+                dance(); // Call the dance function
+                return; // Exit early so we don't get a chat response
+            }
+
+            isSpeaking = true;
+            playAction(animationNames.think, THREE.LoopRepeat);
+
+            try {
+                chatHistory.push({
+                    role: "user",
+                    parts: [{
+                        text: userMessage
+                    }]
+                });
+
+                const payload = {
+                    contents: chatHistory
+                };
+
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${TEXT_MODEL}:generateContent?key=${API_KEY}`;
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API call failed with status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                let botResponseText = 'I am unable to generate a response at this time. Please try again.';
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    botResponseText = result.candidates[0].content.parts[0].text;
+                }
+
+                chatHistory.push({
+                    role: "model",
+                    parts: [{
+                        text: botResponseText
+                    }]
+                });
+
+                appendMessage('bot', botResponseText);
+                textToSpeech(botResponseText);
+            } catch (error) {
+                console.error('Error generating text:', error);
+                playAction(animationNames.shake);
+                isSpeaking = false;
+                setTimeout(() => {
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                }, 2000);
+            }
+        }
+        
+        // Text to Speech logic (using Web Speech API)
+        function textToSpeech(text) {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                
+                if (maleVoice) {
+                    utterance.voice = maleVoice;
+                }
+
+                utterance.onstart = () => {
+                    isSpeaking = true;
+                    isTalking = true;
+                    playAction(animationNames.talk, THREE.LoopRepeat);
+                };
+
+                utterance.onend = () => {
+                    isSpeaking = false;
+                    isTalking = false;
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                    resetIdleTimers();
+                };
+
+                window.speechSynthesis.speak(utterance);
+            } else {
+                console.error("Speech Synthesis not supported");
+            }
+        }
+        
+        // Speech Recognition
+        micButton.addEventListener('click', () => {
+            if (isListening) {
+                recognition.stop();
+                micButton.classList.remove('listening-pulse');
+                isListening = false;
+                // Transition back to idle after stopping listening
+                playAction(animationNames.idle2, THREE.LoopRepeat);
+                return;
+            }
+
+            if (!('webkitSpeechRecognition' in window)) {
+                showMessageBox("Speech recognition is not supported in this browser. Please use Chrome.");
+                return;
+            }
+            
+            faceForward();
+            resetIdleTimers();
+
+            // First, speak the prompt, then start listening
+            const listeningUtterance = new SpeechSynthesisUtterance("Go ahead, I'm listening.");
+            if (maleVoice) {
+                listeningUtterance.voice = maleVoice;
+            }
+            listeningUtterance.onstart = () => {
+                isSpeaking = true;
+                playAction(animationNames.talk, THREE.LoopRepeat);
+            }
+            listeningUtterance.onend = () => {
+                isSpeaking = false;
+                startSpeechRecognition();
+            }
+
+            window.speechSynthesis.speak(listeningUtterance);
+        });
+
+        function startSpeechRecognition() {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isListening = true;
+                micButton.classList.add('listening-pulse');
+                playAction(animationNames.listen, THREE.LoopRepeat);
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                if (transcript) {
+                    appendMessage('user', transcript);
+                    getBotResponse(transcript);
+                }
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                micButton.classList.remove('listening-pulse');
+                // The getBotResponse will handle the idle animation after its done.
+                // If the user said nothing, reset to idle here.
+                if (!chatInput.value && !isSpeaking) {
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                isListening = false;
+                micButton.classList.remove('listening-pulse');
+                playAction(animationNames.shake);
+                setTimeout(() => {
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                }, 2000);
+            };
+
+            recognition.start();
+        }
+
+        // Dance Mode
+        function dance() {
+            resetIdleTimers();
+            faceForward();
+            isDancing = true;
+            
+            if (Tone.Transport.state !== 'started') {
+                Tone.start();
+                synth = new Tone.Synth().toDestination();
+                loop = new Tone.Loop(time => {
+                    synth.triggerAttackRelease("C4", "8n", time);
+                    synth.triggerAttackRelease("E4", "8n", time + Tone.Time("8n").toSeconds());
+                    synth.triggerAttackRelease("G4", "8n", time + Tone.Time("4n").toSeconds());
+                    synth.triggerAttackRelease("B4", "8n", time + Tone.Time("4n").toSeconds() + Tone.Time("8n").toSeconds());
+                }, "2n").start(0);
+
+                Tone.Transport.bpm.value = 120;
+                Tone.Transport.start();
+            }
+            
+            const danceAction = playAction(animationNames.dance, THREE.LoopOnce);
+
+            danceAction.onFinished(() => {
+                isDancing = false;
+                if (Tone.Transport.state === 'started') {
+                    Tone.Transport.stop();
+                    loop.dispose();
+                    synth.dispose();
+                }
+                playAction(animationNames.idle2, THREE.LoopRepeat);
+            });
+        }
+        
+        danceButton.addEventListener('click', () => {
+            faceForward();
+            dance();
+        });
+
+
+        // Initialize on window load
+        window.onload = function() {
+            init();
+        };
+
     </script>
 </body>
+
 </html>
