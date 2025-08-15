@@ -5,11 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI-AVATAR</title>
 
-    <!-- Tailwind CSS for modern styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    
-    <!-- Custom CSS for layout and aesthetics -->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
         body {
@@ -20,7 +17,6 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            color: #e5e7eb;
         }
         canvas {
             display: block;
@@ -28,363 +24,659 @@
         }
         .chat-ui-container {
             position: absolute;
-            top: 20px;
-            right: 20px;
             bottom: 20px;
+            right: 20px;
+            top: 20px;
             padding: 1rem;
             width: 100%;
             max-width: 400px;
             z-index: 10;
             display: flex;
             flex-direction: column;
-            background-color: rgba(31, 41, 55, 0.9); /* Semi-transparent dark background */
+            background-color: rgba(31, 41, 55, 0.8);
             border-radius: 1rem;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
             backdrop-filter: blur(5px);
         }
-        .chat-messages {
+        #chat-history {
             flex-grow: 1;
             overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            padding-right: 0.5rem;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            background-color: #1f2937;
+            margin-bottom: 1rem;
         }
-        .message {
+        .chat-message {
+            margin-bottom: 1rem;
             max-width: 80%;
-            padding: 0.5rem 1rem;
-            border-radius: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 1.5rem;
+            line-height: 1.5;
         }
-        .message-user {
+        .user-message {
+            background-color: #3b82f6;
+            color: white;
             align-self: flex-end;
-            background-color: #3b82f6; /* Blue for user */
+            margin-left: auto;
+        }
+        .bot-message {
+            background-color: #4b5563;
             color: white;
-            border-bottom-right-radius: 0;
-        }
-        .message-avatar {
             align-self: flex-start;
-            background-color: #4b5563; /* Gray for avatar */
-            color: white;
-            border-bottom-left-radius: 0;
+            margin-right: auto;
         }
-        .input-area {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-top: 1rem;
+        .listening-button {
+            animation: pulse 1.5s infinite;
         }
-        .input-area textarea {
-            background-color: #1f2937;
-            border: 1px solid #4b5563;
-            color: #e5e7eb;
-            resize: none;
-            height: 40px;
-            overflow: hidden;
-        }
-        .send-button {
-            transition: transform 0.2s;
-        }
-        .send-button:hover {
-            transform: scale(1.05);
-        }
-        .loading-indicator {
-            align-self: flex-start;
-            padding: 0.5rem 1rem;
-        }
-        .system-message {
-            text-align: center;
-            font-size: 0.875rem;
-            color: #9ca3af;
-        }
-        
-        .loading-animation {
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-        }
-        .loading-dot {
-            width: 8px;
-            height: 8px;
-            background-color: #9ca3af;
-            border-radius: 50%;
-            animation: bounce 1.4s infinite ease-in-out both;
-        }
-        .loading-dot:nth-child(1) { animation-delay: -0.32s; }
-        .loading-dot:nth-child(2) { animation-delay: -0.16s; }
-        @keyframes bounce {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
-        }
-        
-        /* Modal for error messages */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 100;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.4);
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-content {
-            background-color: #1f2937;
-            margin: auto;
-            padding: 20px;
-            border: 1px solid #888;
-            width: 80%;
-            max-width: 500px;
-            border-radius: 0.5rem;
-            text-align: center;
-        }
-        .close-button {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-        }
-        .close-button:hover,
-        .close-button:focus {
-            color: black;
-            text-decoration: none;
-            cursor: pointer;
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 rgba(255, 255, 255, 0.7);
+            }
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 0 20px rgba(255, 255, 255, 1);
+            }
         }
     </style>
-
-    <!-- Three.js for 3D rendering -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+            }
+        }
+    </script>
 </head>
-<body>
-    <div id="modal" class="modal">
-        <div class="modal-content">
-            <span class="close-button" onclick="closeModal()">&times;</span>
-            <p id="modal-message"></p>
-        </div>
+<body class="bg-gray-900 text-white">
+
+    <div id="canvas-container" class="fixed inset-0 z-0"></div>
+
+    <div id="loading-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 transition-opacity duration-500">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+        <p class="mt-4 text-gray-300">Loading 3D model...</p>
     </div>
-    
-    <div class="chat-ui-container">
-        <div class="flex items-center justify-between p-4 border-b border-gray-700">
-            <h1 class="text-xl font-bold">Chat with AI Avatar</h1>
-            <i class="fas fa-robot text-gray-400"></i>
-        </div>
-        <div class="chat-messages" id="chat-messages">
-            <div class="system-message">
-                <p>Welcome! Ask me anything.</p>
+
+    <div id="chat-ui" class="chat-ui-container hidden">
+        <div id="chat-history" class="mb-4"></div>
+        <div class="flex flex-col w-full space-y-2">
+            <div class="flex space-x-2 w-full">
+                <button id="mic-button" class="flex-grow bg-gray-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-gray-700 transition-colors duration-200 shadow-md flex items-center justify-center">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <button id="dance-button" class="flex-grow bg-purple-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-purple-700 transition-colors duration-200 shadow-md flex items-center justify-center">
+                    <i class="fas fa-music"></i>
+                </button>
             </div>
-            <!-- Chat messages will be appended here -->
-        </div>
-        <div class="input-area">
-            <textarea id="chat-input" class="flex-grow rounded-lg p-2" placeholder="Type a message..." rows="1"></textarea>
-            <button id="send-button" class="bg-blue-600 text-white p-2 rounded-full w-10 h-10 flex items-center justify-center shadow-lg hover:bg-blue-500 send-button">
-                <i class="fas fa-paper-plane"></i>
-            </button>
+            <div class="flex space-x-2 w-full">
+                <input type="text" id="chat-input" placeholder="Type your message..." class="flex-grow p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button id="send-button" class="flex-grow bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-md">
+                    Send
+                </button>
+            </div>
         </div>
     </div>
 
-    <!-- Main script for the 3D scene and chat logic -->
     <script type="module">
-        // Import Three.js modules (already loaded via CDN)
-        // This is for clarity, but not strictly needed due to global scope from CDN
-        // import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
-        // import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
-        // import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js';
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // --- Global Variables ---
         let scene, camera, renderer, avatar, mixer;
-        let animations, animationActions = {};
-        let activeAction;
-        let jawBone;
-        let isTalking = false;
-        let chatHistory = [];
-        let isMoving = false;
-        let isTurning = false;
-        let targetQuaternion = new THREE.Quaternion();
-        let turnStartTime = 0;
-        const turnDuration = 1000;
-        let audioContext;
-        let sourceNode;
-        let lastInteractionTime = Date.now();
-        const idleTimeout = 30000; // 30 seconds
+        const clock = new THREE.Clock();
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        let gltfObject; // Store the GLTF object to add click listener to the avatar
+
+        let leftEye, rightEye, headBone, jawBone;
+        const mouse = new THREE.Vector2();
+        const lookAtTarget = new THREE.Vector3();
+
+        const leftEyeBoneName = 'Eye_Left';
+        const rightEyeBoneName = 'Eye_Right';
+        const headBoneName = 'HeadTop_End_end';
+        const jawBoneName = 'Jaw';
+        const rotationLimit = 0.5;
 
         const animationNames = {
             idle: 'idle',
-            idle2: 'idle-2',
-            speaking: 'talking',
+            idle2: 'idle2',
+            wave: 'wave',
+            talk: 'talk',
+            listening: 'listen',
+            thinking: 'think',
+            point: 'point',
+            nod: 'nod',
+            shake: 'shake',
             walk: 'walk',
-            wave: 'wave'
+            happy: 'happy',
+            dance: 'dance',
         };
-        
-        // --- Modal Functions ---
-        function showModal(message) {
-            document.getElementById('modal-message').innerText = message;
-            document.getElementById('modal').style.display = 'flex';
-        }
 
-        function closeModal() {
-            document.getElementById('modal').style.display = 'none';
-        }
+        const greetings = [
+            { initial: "Hello there!", followUp: "What can I do for you?" },
+            { initial: "Hi!", followUp: "How can I help?" },
+            { initial: "Hey!", followUp: "Nice to see you!" },
+            { initial: "Greetings!", followUp: "Feel free to ask me anything." }
+        ];
 
-        // --- Core Application Logic ---
+        let currentAction;
+        const actions = {};
+
+        let isGreeting = false;
+        let isMoving = false;
+        let isTurning = false;
+        let isPatrolling = false;
+        let patrolTimeout;
+        let targetQuaternion = new THREE.Quaternion();
+        const turnDuration = 500;
+        let turnStartTime = 0;
+
+        let lastInteractionTime = Date.now();
+        const ACTIVE_IDLE_TIMEOUT = 10 * 1000; // 10 seconds of inactivity
+        const PASSIVE_IDLE_TIMEOUT = 30 * 1000; // 30 seconds of inactivity to start patrol
+        const PATROL_WAIT_TIME = 10 * 1000; // 10 seconds at each patrol point
+
+        let lastMouseMovementTime = Date.now();
+        const MOUSE_IDLE_TIMEOUT = 5000;
+
+        const chatInput = document.getElementById('chat-input');
+        const sendButton = document.getElementById('send-button');
+        const micButton = document.getElementById('mic-button');
+        const danceButton = document.getElementById('dance-button');
+        const loadingScreen = document.getElementById('loading-screen');
+        const chatUiContainer = document.getElementById('chat-ui');
+        const chatHistory = document.getElementById('chat-history');
+
+        let canvasContainer;
+
+        const synth = window.speechSynthesis;
+        let speechRecognition;
+        let isListening = false;
         
-        /**
-         * Initializes the Three.js scene, camera, renderer, and lighting.
-         */
-        function init() {
-            // Scene setup
+        let danceLoop;
+
+        init();
+        animate();
+
+        async function init() {
+            canvasContainer = document.getElementById('canvas-container');
+
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x111827);
 
-            // Camera setup
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 1.5, 3);
-            camera.lookAt(0, 1.2, 0);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 1.8, 3);
 
-            // Renderer setup
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.outputEncoding = THREE.sRGBEncoding;
-            renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.shadowMap.enabled = true;
-            document.body.appendChild(renderer.domElement);
+            canvasContainer.appendChild(renderer.domElement);
 
-            // Lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
             scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-            directionalLight.position.set(1, 2, 1);
-            directionalLight.castShadow = true;
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 2, 3).normalize();
             scene.add(directionalLight);
-            
-            // OrbitControls for camera interaction
-            const controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.target.set(0, 1.2, 0);
-            controls.update();
 
-            // Load the avatar model
-            loadAvatar();
+            const ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(100, 100),
+                new THREE.MeshStandardMaterial({ color: 0x222222 })
+            );
+            ground.name = 'Ground';
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -0.01;
+            scene.add(ground);
 
-            // Handle window resizing
-            window.addEventListener('resize', onWindowResize, false);
-
-            // Setup input event listeners
-            setupInputListeners();
-
-            // Initialize audio context
-            try {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            } catch (e) {
-                console.error('Web Audio API is not supported in this browser:', e);
-                showModal('Web Audio API is not supported in this browser.');
-            }
-        }
-
-        /**
-         * Loads the 3D avatar model from a public GLTF URL.
-         */
-        function loadAvatar() {
-            const loader = new THREE.GLTFLoader();
-            // A public domain avatar model for demonstration
-            loader.load('https://raw.githubusercontent.com/ajay-goel-22/3D-Model-for-AI-Avatar/main/Stacy.glb', function(gltf) {
-                avatar = gltf.scene;
-                avatar.scale.set(1.2, 1.2, 1.2);
-                avatar.position.y = -0.5;
-                avatar.traverse(node => {
-                    if (node.isMesh) {
-                        node.castShadow = true;
-                        node.receiveShadow = true;
-                    }
-                    // Find the jaw bone for lip-syncing
-                    if (node.isBone && node.name === 'mixamorigJaw') {
-                        jawBone = node;
-                    }
-                });
+            const loader = new GLTFLoader();
+            loader.load('./chatbot_avatar.glb', (gltf) => {
+                gltfObject = gltf.scene; // Keep a reference to the loaded object
+                avatar = gltfObject;
                 scene.add(avatar);
-                
-                // Set up animations
+                console.log("Avatar loaded and added to scene.");
+                avatar.position.z = 0;
+                avatar.position.y = 0;
+                findBones(avatar);
                 mixer = new THREE.AnimationMixer(avatar);
-                animations = gltf.animations;
-                
-                // Create actions for each animation
-                animations.forEach(clip => {
+                console.log('Found animations in GLB:', gltf.animations.map(clip => clip.name));
+                gltf.animations.forEach(clip => {
                     const action = mixer.clipAction(clip);
-                    animationActions[clip.name] = action;
+                    actions[clip.name] = action;
                 });
-                
-                // Start with an idle animation
-                playAction(animationNames.idle2, THREE.LoopRepeat);
-                
-                // Start the animation loop
-                animate();
-
-            }, undefined, function(error) {
-                console.error('An error occurred loading the GLTF model:', error);
-                showModal('Failed to load avatar model. Please try again later.');
+                mixer.addEventListener('finished', (event) => {
+                    if (event.action._clip.name === animationNames.dance) {
+                        stopDanceMusic();
+                        playAction(animationNames.idle2, THREE.LoopRepeat);
+                    }
+                });
+                startGreetingSequence();
+                faceCamera();
+                setTimeout(() => {
+                    loadingScreen.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingScreen.classList.add('hidden');
+                        chatUiContainer.classList.remove('hidden');
+                    }, 500);
+                }, 500);
+            }, (xhr) => {
+                const percent = Math.round((xhr.loaded / xhr.total) * 100);
+                document.querySelector('#loading-screen p').innerText = `Loading: ${percent}%`;
+            }, (error) => {
+                console.error('An error occurred while loading the GLTF model:', error);
+                document.querySelector('#loading-screen p').innerText = 'Failed to load model. Please check the file path.';
             });
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('mousemove', onMouseMove);
+            chatInput.addEventListener('focus', () => {
+                reactToInteraction();
+                startGreetingSequence();
+            });
+            sendButton.addEventListener('click', onSendMessage);
+            chatInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    onSendMessage();
+                }
+            });
+            renderer.domElement.addEventListener('mousedown', onCanvasClick, false);
+            micButton.addEventListener('click', () => {
+                reactToInteraction();
+                toggleSpeechRecognition();
+            });
+            danceButton.addEventListener('click', () => {
+                reactToInteraction();
+                onDanceButtonClick();
+            });
+            initSpeechRecognition();
         }
-        
-        /**
-         * Plays a specified animation action.
-         * @param {string} name - The name of the animation to play.
-         * @param {number} loopMode - The looping mode for the animation (e.g., THREE.LoopRepeat).
-         */
-        function playAction(name, loopMode) {
-            const newAction = animationActions[name];
-            if (!newAction) {
-                console.warn(`Animation action "${name}" not found.`);
+
+        function startGreetingSequence() {
+            if (isGreeting) {
                 return;
             }
-
-            if (activeAction) {
-                // Cross-fade to the new animation
-                activeAction.fadeOut(0.5);
-                newAction.reset().fadeIn(0.5).play();
-            } else {
-                newAction.play();
-            }
-            newAction.setLoop(loopMode);
-            activeAction = newAction;
+            isGreeting = true;
+            reactToInteraction();
+            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+            playAction(animationNames.wave, THREE.LoopOnce, 2);
+            speakText(randomGreeting.initial, () => {
+                playAction(animationNames.talk, THREE.LoopRepeat);
+                speakText(randomGreeting.followUp, () => {
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                    isGreeting = false;
+                    resetIdleSequence();
+                });
+            });
         }
 
-        /**
-         * Converts base64 encoded PCM audio data to a WAV Blob.
-         * @param {string} base64 - Base64 encoded audio data.
-         * @param {number} sampleRate - The sample rate of the audio.
-         * @returns {Blob} A WAV audio blob.
-         */
-        function pcmToWav(base64, sampleRate) {
-            const pcmData = atob(base64);
-            const pcmBuffer = new ArrayBuffer(pcmData.length);
-            const pcmView = new DataView(pcmBuffer);
-            for (let i = 0; i < pcmData.length; ++i) {
-                pcmView.setUint8(i, pcmData.charCodeAt(i));
+        function findBones(object) {
+            object.traverse(child => {
+                if (child.isBone) {
+                    if (child.name === leftEyeBoneName) leftEye = child;
+                    if (child.name === rightEyeBoneName) rightEye = child;
+                    if (child.name === headBoneName) headBone = child;
+                    if (child.name === jawBoneName) jawBone = child;
+                }
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onMouseMove(event) {
+            if (isMoving) return;
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            lastMouseMovementTime = Date.now();
+        }
+
+        function onCanvasClick(event) {
+            pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+            pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(pointer, camera);
+            
+            const intersects = raycaster.intersectObjects(scene.children, true);
+            
+            if (intersects.length > 0) {
+                const intersection = intersects[0];
+                const object = intersection.object;
+
+                if (object.parent && object.parent.uuid === avatar.uuid) {
+                    // Clicked on the avatar
+                    reactToInteraction();
+                    startGreetingSequence();
+                } else if (object.name === 'Ground') {
+                    // Clicked on the ground
+                    reactToInteraction();
+                    const point = intersection.point;
+                    point.y = 0;
+                    moveAvatar(point);
+                }
+            }
+        }
+
+        function moveAvatar(targetPosition) {
+            if (isMoving) return;
+            isMoving = true;
+            stopPatrol(); // Stop patrolling if it was active
+            playAction(animationNames.walk, THREE.LoopRepeat);
+            avatar.userData.targetPosition = new THREE.Vector3().copy(targetPosition);
+
+            const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
+            const currentQuaternion = avatar.quaternion.clone();
+            avatar.lookAt(avatar.userData.targetPosition);
+            targetQuaternion.copy(avatar.quaternion);
+            avatar.quaternion.copy(currentQuaternion);
+
+            isTurning = true;
+            turnStartTime = Date.now();
+        }
+
+        function playAction(name, loopMode = THREE.LoopOnce, clampWhenFinished = 1) {
+            if (currentAction && currentAction.isRunning()) {
+                currentAction.crossFadeTo(actions[name], 0.2, true).play();
+            } else {
+                if(actions[name]) {
+                    actions[name].play();
+                }
             }
 
-            const header = new ArrayBuffer(44);
-            const view = new DataView(header);
+            currentAction = actions[name];
+            if(currentAction) {
+                currentAction.loop = loopMode;
+                if (loopMode === THREE.LoopOnce) {
+                    currentAction.clampWhenFinished = clampWhenFinished;
+                }
+                if (loopMode !== THREE.LoopRepeat) {
+                    currentAction.reset();
+                }
+            }
+        }
 
-            // RIFF identifier
-            writeString(view, 0, 'RIFF');
-            // file length
-            view.setUint32(4, 36 + pcmData.length, true);
-            // RIFF type
-            writeString(view, 8, 'WAVE');
-            // format chunk identifier
-            writeString(view, 12, 'fmt ');
-            // format chunk length
-            view.setUint32(16, 16, true);
-            // sample format (1 = PCM)
-            view.setUint16(20, 1, true);
-            // channel count
-            view.setUint16(22, 1, true);
-            // sample rate
-            view.setUint32(24, sampleRate, true);
-            // byte rate (sample rate * block align)
-            view.setUint32(28, sampleRate * 2, true);
-            // block align (channel count * bytes per sample)
-            view.setUint16(32,
+        function speakText(text, onEndCallback = () => {}) {
+            reactToInteraction();
+            if ('speechSynthesis' in window) {
+                if (synth.speaking) {
+                    synth.cancel();
+                }
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.pitch = 1;
+                utterance.rate = 1;
+                utterance.volume = 1;
+
+                const voices = synth.getVoices();
+                const maleVoice = voices.find(v => v.name.includes("Male") && v.lang.includes("en"));
+                if (maleVoice) {
+                    utterance.voice = maleVoice;
+                }
+                
+                utterance.onend = () => {
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                    onEndCallback();
+                    lastInteractionTime = Date.now();
+                };
+                utterance.onerror = (event) => {
+                    console.error('SpeechSynthesisUtterance.onerror', event);
+                };
+                playAction(animationNames.talk, THREE.LoopRepeat);
+                synth.speak(utterance);
+            } else {
+                console.error('Speech Synthesis not supported in this browser.');
+                onEndCallback();
+            }
+        }
+
+        async function onSendMessage() {
+            const userMessage = chatInput.value.trim();
+            if (userMessage) {
+                addMessageToHistory('user', userMessage);
+                chatInput.value = '';
+                reactToInteraction();
+                
+                // Check if user message is a command
+                if (userMessage.toLowerCase().includes("dance")) {
+                    onDanceButtonClick();
+                    return;
+                }
+
+                playAction(animationNames.thinking, THREE.LoopRepeat);
+
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+                let chatHistoryArray = [];
+                chatHistoryArray.push({ role: "user", parts: [{ text: userMessage }] });
+
+                const payload = {
+                    contents: chatHistoryArray
+                };
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API call failed with status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const botResponse = result.candidates[0].content.parts[0].text;
+                        addMessageToHistory('bot', botResponse);
+                        speakText(botResponse);
+                    } else {
+                        throw new Error('Invalid API response structure');
+                    }
+                } catch (error) {
+                    console.error('Error fetching response from Gemini API:', error);
+                    addMessageToHistory('bot', 'Sorry, I am having trouble connecting. Please try again.');
+                    speakText('Sorry, I am having trouble connecting. Please try again.');
+                }
+            }
+        }
+
+        function addMessageToHistory(role, text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('chat-message', role + '-message');
+            messageDiv.innerText = text;
+            chatHistory.appendChild(messageDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                speechRecognition = new SpeechRecognition();
+                speechRecognition.continuous = false;
+                speechRecognition.lang = 'en-US';
+                speechRecognition.interimResults = false;
+
+                speechRecognition.onstart = () => {
+                    isListening = true;
+                    micButton.classList.add('listening-button');
+                    playAction(animationNames.listening, THREE.LoopRepeat);
+                };
+
+                speechRecognition.onresult = (event) => {
+                    const speechResult = event.results[0][0].transcript;
+                    chatInput.value = speechResult;
+                    onSendMessage();
+                };
+
+                speechRecognition.onend = () => {
+                    isListening = false;
+                    micButton.classList.remove('listening-button');
+                };
+
+                speechRecognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    isListening = false;
+                    micButton.classList.remove('listening-button');
+                };
+            } else {
+                console.warn('Speech Recognition is not supported by this browser.');
+                micButton.style.display = 'none';
+            }
+        }
+
+        function toggleSpeechRecognition() {
+            if (isListening) {
+                speechRecognition.stop();
+            } else {
+                speechRecognition.start();
+            }
+        }
+
+        function onDanceButtonClick() {
+            reactToInteraction();
+            playAction(animationNames.dance, THREE.LoopOnce, 2);
+            playDanceMusic();
+        }
+
+        function playDanceMusic() {
+            const synth = new Tone.Synth().toDestination();
+            const now = Tone.now();
+            synth.triggerAttackRelease('C4', '8n', now);
+            synth.triggerAttackRelease('E4', '8n', now + 0.5);
+            synth.triggerAttackRelease('G4', '8n', now + 1);
+            synth.triggerAttackRelease('C5', '8n', now + 1.5);
+        }
+
+        function stopDanceMusic() {
+            if (danceLoop) {
+                danceLoop.stop();
+                danceLoop = null;
+            }
+        }
+
+        function reactToInteraction() {
+            lastInteractionTime = Date.now();
+            faceCamera();
+            stopPatrol();
+            if (currentAction && currentAction.getClip().name !== animationNames.walk && currentAction.getClip().name !== animationNames.idle2) {
+                playAction(animationNames.idle2, THREE.LoopRepeat);
+            }
+        }
+
+        function resetIdleSequence() {
+            lastInteractionTime = Date.now();
+        }
+        
+        function faceCamera() {
+            if (!avatar || !camera) return;
+            const avatarPosition = avatar.position.clone();
+            const cameraPosition = camera.position.clone();
+            cameraPosition.y = avatarPosition.y;
+
+            const direction = new THREE.Vector3().subVectors(cameraPosition, avatarPosition).normalize();
+            const target = new THREE.Object3D();
+            target.position.copy(avatarPosition);
+            target.lookAt(direction.add(avatarPosition));
+            targetQuaternion.copy(target.quaternion);
+
+            isTurning = true;
+            turnStartTime = Date.now();
+        }
+
+        function startPatrol() {
+            if (isPatrolling) return;
+            isPatrolling = true;
+            updatePatrol();
+        }
+
+        function stopPatrol() {
+            isPatrolling = false;
+            clearTimeout(patrolTimeout);
+        }
+
+        function updatePatrol() {
+            if (!isPatrolling) return;
+            const x = (Math.random() - 0.5) * 5;
+            const z = (Math.random() - 0.5) * 5;
+            moveAvatar(new THREE.Vector3(x, 0, z));
+            patrolTimeout = setTimeout(updatePatrol, PATROL_WAIT_TIME);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+            
+            // Mouse-Look animation
+            if (headBone && lastMouseMovementTime + MOUSE_IDLE_TIMEOUT > Date.now() && !isMoving && !isGreeting && !isPatrolling) {
+                const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5).unproject(camera);
+                const dir = vector.sub(camera.position).normalize();
+                const distance = -camera.position.y / dir.y;
+                const pos = camera.position.clone().add(dir.multiplyScalar(distance));
+                
+                lookAtTarget.lerp(pos, 0.1);
+                
+                headBone.lookAt(lookAtTarget);
+
+                const headX = Math.min(Math.max(headBone.rotation.x, -rotationLimit), rotationLimit);
+                const headY = Math.min(Math.max(headBone.rotation.y, -rotationLimit), rotationLimit);
+                headBone.rotation.set(headX, headY, headBone.rotation.z);
+            }
+
+            // Lip-syncing animation (active only during the talk animation)
+            if (jawBone && currentAction && currentAction.getClip().name === animationNames.talk) {
+                const jawRotation = Math.sin(time * 10) * 0.02 + 0.02; // Increased speed for better talk feel
+                jawBone.rotation.x = -jawRotation;
+            } else if (jawBone) {
+                jawBone.rotation.x = 0;
+            }
+            
+            // Idle and Patrol Sequence
+            if (!isMoving && !isListening && !isGreeting && !isPatrolling) {
+                const timeSinceLastInteraction = Date.now() - lastInteractionTime;
+                if (timeSinceLastInteraction > PASSIVE_IDLE_TIMEOUT) {
+                    startPatrol();
+                } else if (timeSinceLastInteraction > ACTIVE_IDLE_TIMEOUT) {
+                    playAction(animationNames.idle, THREE.LoopRepeat);
+                } else {
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                }
+            }
+
+            // Avatar movement logic
+            if (isMoving) {
+                const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
+
+                if (distance > 0.05) {
+                    if (isTurning) {
+                        const elapsedTime = Date.now() - turnStartTime;
+                        const turnProgress = Math.min(elapsedTime / turnDuration, 1);
+                        avatar.quaternion.slerp(targetQuaternion, turnProgress);
+                        if (turnProgress >= 1) {
+                            isTurning = false;
+                        }
+                    } else {
+                        const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
+                        avatar.position.addScaledVector(direction, 0.008);
+                    }
+                } else {
+                    avatar.position.copy(avatar.userData.targetPosition);
+                    isMoving = false;
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                    lastInteractionTime = Date.now();
+                }
+            }
+            
+            if (mixer) mixer.update(delta);
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
