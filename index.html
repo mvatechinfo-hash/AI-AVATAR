@@ -137,18 +137,24 @@
         const jawBoneName = 'Jaw';
         const rotationLimit = 0.5;
 
+        // Categorized list of animation names
         const animationNames = {
-            idle: 'idle',
-            idle2: 'idle2',
-            wave: 'wave',
-            talk: 'talk',
+            idle: 'neutralidle',
+            // Active idle animations to cycle through when waiting
+            active_idle: ['happyidle', 'standingwbriefcaseidle', 'warrioridle', 'weightshift', 'lookawaygesture'],
+            // Gestures for talking
+            talk: ['whatevergesture', 'lengthyheadnod'],
+            // Gestures for listening
             listening: 'listen',
-            thinking: 'think',
+            // Gestures for thinking
+            thinking: 'thoughtfulheadshake',
+            // Gestures for positive sentiment
+            positive_reaction: ['happyhandgesture', 'acknowledging', 'headnodyes', 'hardheadnod', 'relievedsigh', 'beingcocky'],
+            // Gestures for negative sentiment
+            negative_reaction: ['shakingheadno', 'annoyedheadshake', 'dismissinggesture', 'no', 'sarcasticheadnod', 'angrygesture'],
             point: 'point',
-            nod: 'nod',
-            shake: 'shake',
+            wave: 'wave',
             walk: 'walk',
-            happy: 'happy',
             dance: 'dance',
         };
 
@@ -198,6 +204,14 @@
         let isVoiceListReady = false;
 
         let danceLoop;
+
+        // Helper function to get a random animation name from an array
+        function getRandomAnimation(animationArray) {
+            if (Array.isArray(animationArray)) {
+                return animationArray[Math.floor(Math.random() * animationArray.length)];
+            }
+            return animationArray;
+        }
 
         async function playDanceMusic() {
             try {
@@ -300,7 +314,7 @@
                             console.log("Dance animation finished. Stopping music and returning to idle.");
                             stopDanceMusic();
                             isPlayingDance = false;
-                            playAction(animationNames.idle2, THREE.LoopRepeat);
+                            playAction(getRandomAnimation(animationNames.active_idle), THREE.LoopRepeat);
                         }
                     });
                 } else {
@@ -375,10 +389,10 @@
             
             speakText(randomGreeting.initial, () => {
                 console.log('First speech finished, starting second speech and talk animation.');
-                playAction(animationNames.talk, THREE.LoopRepeat);
+                playAction(getRandomAnimation(animationNames.talk), THREE.LoopRepeat);
                 speakText(randomGreeting.followUp, () => {
                     console.log('Second speech finished, returning to idle.');
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                    playAction(getRandomAnimation(animationNames.active_idle), THREE.LoopRepeat);
                     isGreeting = false;
                 });
             });
@@ -416,10 +430,15 @@
                 };
 
                 speechRecognition.onend = () => {
-                    micButton.classList.remove('listening-button');
-                    isListening = false;
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
-                    reactToInteraction(); // Use reactToInteraction to reset the timer and state
+                    // This is the key change: Add a short delay before returning to idle.
+                    // This gives the user time to start speaking and prevents the listening
+                    // animation from being cut off instantly.
+                    setTimeout(() => {
+                        micButton.classList.remove('listening-button');
+                        isListening = false;
+                        playAction(getRandomAnimation(animationNames.active_idle), THREE.LoopRepeat);
+                        reactToInteraction(); 
+                    }, 500); // 500ms delay
                 };
             } else {
                 console.warn('Speech Recognition API is not supported in this browser. The microphone button will be hidden.');
@@ -437,7 +456,7 @@
                     avatar.position.set(0, 0, 0);
                     faceCamera();
 
-                    playAction(animationNames.talk, THREE.LoopRepeat);
+                    playAction(getRandomAnimation(animationNames.talk), THREE.LoopRepeat);
                     speakText("Go ahead, I'm listening.", () => {
                         playAction(animationNames.listening, THREE.LoopRepeat);
                         if (speechRecognition) {
@@ -464,7 +483,7 @@
             isMoving = false;
             isTurning = false;
             isPatrolling = false;
-            playAction(animationNames.idle2, THREE.LoopRepeat);
+            playAction(getRandomAnimation(animationNames.active_idle), THREE.LoopRepeat);
         }
         
         function handleAvatarInteraction() {
@@ -529,7 +548,7 @@
         function playAction(name, loop = THREE.LoopOnce, timeScale = 1) {
             console.log(`Attempting to play animation: ${name}. Current action is: ${currentAction ? currentAction.getClip().name : 'none'}`);
             
-            if (isGreeting && name !== animationNames.wave && name !== animationNames.talk) {
+            if (isGreeting && name !== animationNames.wave && !animationNames.talk.includes(name)) {
                 console.log(`Aborting playAction(${name}) because greeting sequence is active.`);
                 return;
             }
@@ -567,7 +586,7 @@
         }
 
         function onChatInputBlur() {
-            if (!isGreeting && currentAction && currentAction.getClip().name !== animationNames.talk && currentAction.getClip().name !== animationNames.thinking) {
+            if (!isGreeting && currentAction && currentAction.getClip().name !== getRandomAnimation(animationNames.talk) && currentAction.getClip().name !== animationNames.thinking) {
                 playAction(animationNames.idle, THREE.LoopRepeat);
             }
         }
@@ -612,7 +631,7 @@
                 console.error("API key is missing. Please add your API key to the code.");
                 const errorMessage = 'Error: API key is missing. Please add it to the code to enable the conversation.';
                 appendMessage(errorMessage, 'bot');
-                playAction(animationNames.shake);
+                playAction(getRandomAnimation(animationNames.negative_reaction));
                 speakText(errorMessage);
                 return;
             }
@@ -644,7 +663,7 @@
                     if (!response.ok) {
                         const errorMessage = `API call failed with status: ${response.status}.`;
                         console.error(errorMessage);
-                        playAction(animationNames.shake);
+                        playAction(getRandomAnimation(animationNames.negative_reaction));
                         appendMessage(`API Error: ${errorMessage}`, 'bot');
                         speakText(`API Error: ${errorMessage}`);
                         return;
@@ -664,9 +683,9 @@
                                onDanceButtonClick();
                            }
                         } else if (lowerCaseText.includes('happy') || lowerCaseText.includes('awesome') || lowerCaseText.includes('great') || lowerCaseText.includes('yes') || lowerCaseText.includes('correct')) {
-                            playAction(animationNames.nod);
+                            playAction(getRandomAnimation(animationNames.positive_reaction));
                         } else if (lowerCaseText.includes('no') || lowerCaseText.includes('incorrect') || lowerCaseText.includes('error') || lowerCaseText.includes('sorry')) {
-                            playAction(animationNames.shake);
+                            playAction(getRandomAnimation(animationNames.negative_reaction));
                         } else if (lowerCaseText.includes('important') || lowerCaseText.includes('note')) {
                             playAction(animationNames.point);
                         }
@@ -674,7 +693,7 @@
                     } else {
                         const errorMessage = "Unexpected API response structure. The response was empty or malformed.";
                         console.error(errorMessage);
-                        playAction(animationNames.shake);
+                        playAction(getRandomAnimation(animationNames.negative_reaction));
                         appendMessage(`API Error: ${errorMessage}`, 'bot');
                         speakText(`API Error: ${errorMessage}`);
                         return;
@@ -683,7 +702,7 @@
                 } catch (error) {
                     const errorMessage = `An error occurred during API call: ${error}`;
                     console.error(errorMessage);
-                    playAction(animationNames.shake);
+                    playAction(getRandomAnimation(animationNames.negative_reaction));
                     appendMessage(`API Error: ${errorMessage}`, 'bot');
                     speakText(`API Error: ${errorMessage}`);
                     return;
@@ -692,7 +711,7 @@
             if (retries === maxRetries) {
                 const errorMessage = "Max retries reached. API call failed.";
                 console.error(errorMessage);
-                playAction(animationNames.shake);
+                playAction(getRandomAnimation(animationNames.negative_reaction));
                 appendMessage(`API Error: ${errorMessage}`, 'bot');
                 speakText(`API Error: ${errorMessage}`);
             }
@@ -730,7 +749,7 @@
                 utterance.onstart = () => {
                      console.log("Speech started. Playing talk animation.");
                      if (!isGreeting && currentAction && currentAction.getClip().name !== animationNames.wave && currentAction.getClip().name !== animationNames.dance) {
-                         playAction(animationNames.talk, THREE.LoopRepeat);
+                         playAction(getRandomAnimation(animationNames.talk), THREE.LoopRepeat);
                      }
                 };
 
@@ -739,7 +758,7 @@
                     if (onEndCallback) {
                         onEndCallback();
                     } else if (!isGreeting) {
-                        playAction(animationNames.idle2, THREE.LoopRepeat);
+                        playAction(getRandomAnimation(animationNames.active_idle), THREE.LoopRepeat);
                         lastInteractionTime = Date.now();
                     }
                 };
@@ -791,7 +810,7 @@
 
             checkIdlePatrolSequence();
 
-            if (!isGreeting && currentAction && (currentAction.getClip().name === animationNames.idle2 || currentAction.getClip().name === animationNames.idle) && leftEye && rightEye && headBone) {
+            if (!isGreeting && currentAction && (currentAction.getClip().name === animationNames.idle || animationNames.active_idle.includes(currentAction.getClip().name)) && leftEye && rightEye && headBone) {
                 lookAtTarget.set(mouse.x, mouse.y, 1).unproject(camera);
 
                 const leftEyePos = new THREE.Vector3().setFromMatrixPosition(leftEye.matrixWorld);
@@ -859,12 +878,12 @@
              const elapsedTime = Date.now() - lastInteractionTime;
              const currentAnimationName = currentAction ? currentAction.getClip().name : null;
 
-             if (elapsedTime > ACTIVE_IDLE_TIMEOUT && currentAnimationName === animationNames.idle2) {
-                 console.log('Transitioning to Passive Idle after 10 seconds of inactivity.');
-                 playAction(animationNames.idle, THREE.LoopRepeat);
+             if (elapsedTime > ACTIVE_IDLE_TIMEOUT && !animationNames.active_idle.includes(currentAnimationName)) {
+                 console.log('Transitioning to Active Idle after 10 seconds of inactivity.');
+                 playAction(getRandomAnimation(animationNames.active_idle), THREE.LoopRepeat);
              }
 
-             if (elapsedTime > PATROL_START_TIMEOUT && currentAnimationName === animationNames.idle) {
+             if (elapsedTime > PATROL_START_TIMEOUT) {
                  isPatrolling = true;
              }
 
