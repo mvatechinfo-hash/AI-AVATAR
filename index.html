@@ -5,19 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI-AVATAR</title>
 
-    <!-- Tailwind CSS for utility styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <!-- Three.js for 3D rendering -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- GLTFLoader to load 3D models and animations -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <!-- Tone.js for web audio -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
-
     <style>
-        /* General body styling and font */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
         body {
             font-family: 'Inter', sans-serif;
@@ -27,19 +17,11 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            width: 100vw;
         }
-
-        /* Canvas styling to fill the screen */
         canvas {
             display: block;
             touch-action: none;
-            width: 100%;
-            height: 100%;
         }
-
-        /* Loading screen styles */
         .loading-screen {
             position: fixed;
             top: 0;
@@ -56,7 +38,6 @@
             transition: opacity 1s;
         }
 
-        /* Spinner animation for the loading screen */
         .spinner {
             border: 4px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
@@ -70,7 +51,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Chat UI container styles */
         .chat-ui-container {
             position: absolute;
             bottom: 20px;
@@ -86,7 +66,6 @@
             border-radius: 1rem;
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
-        /* Responsive styles for mobile */
         @media (max-width: 768px) {
             .chat-ui-container {
                 position: fixed;
@@ -98,8 +77,6 @@
                 border-radius: 1rem 1rem 0 0;
             }
         }
-
-        /* Chat history area styles */
         .chat-history {
             flex-grow: 1;
             overflow-y: auto;
@@ -107,7 +84,7 @@
             flex-direction: column-reverse;
             padding: 0.5rem;
             margin-bottom: 1rem;
-            -webkit-overflow-scrolling: touch; /* for smooth scrolling on iOS */
+            -webkit-overflow-scrolling: touch;
         }
         .message {
             margin-bottom: 0.5rem;
@@ -128,8 +105,6 @@
             align-self: flex-start;
             border-top-left-radius: 0;
         }
-
-        /* Chat input area and buttons */
         .chat-input-area {
             display: flex;
             gap: 0.5rem;
@@ -169,8 +144,6 @@
             70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
             100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
         }
-        
-        /* Control buttons container */
         .controls-container {
             position: absolute;
             top: 20px;
@@ -179,8 +152,6 @@
             display: flex;
             gap: 1rem;
         }
-
-        /* Modal styles for messages */
         .modal {
             position: fixed;
             inset: 0;
@@ -201,18 +172,16 @@
             text-align: center;
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 </head>
 <body>
-    <!-- Loading Screen -->
     <div id="loading-screen" class="loading-screen">
         <div class="spinner mb-4"></div>
         <p id="loading-text" class="text-xl">Loading... 0%</p>
     </div>
-
-    <!-- 3D Canvas -->
     <canvas id="avatar-canvas"></canvas>
-
-    <!-- Chat and Controls UI -->
     <div id="chat-ui-container" class="chat-ui-container">
         <h1 class="text-white text-2xl font-bold mb-4">AI Avatar Chat</h1>
         <div id="chat-history" class="chat-history"></div>
@@ -231,8 +200,6 @@
             <i class="fas fa-music"></i>
         </button>
     </div>
-    
-    <!-- Modal for messages -->
     <div id="message-modal" class="modal">
         <div class="modal-content">
             <p id="modal-message" class="mb-4"></p>
@@ -241,16 +208,16 @@
             </div>
         </div>
     </div>
-
     <script type="module">
+        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
+        import { Tone } from 'https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js';
+        
         // Global variables and constants
-        // Using a single, publicly available and reliable model with multiple animations
         const avatarUrl = 'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
         const GEMINI_API_KEY = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
         const GEMINI_FLASH_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
         const GEMINI_TTS_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${GEMINI_API_KEY}`;
         
-        // State variables
         let scene, camera, renderer, avatar, mixer;
         let animations = {};
         let currentAction;
@@ -261,28 +228,23 @@
         let isTalking = false;
         let isDancing = false;
         let isListening = false;
-        let isWaving = false;
         let isPatrolling = false;
         let lastInteractionTime = Date.now();
         
-        // Idle and Patrol timings from user requirements
-        const passiveIdleTimeout = 10000; // 10 seconds of no interaction for passive idle
-        const patrolTimeout = 30000; // 30 seconds of no interaction for patrol mode
-        const patrolWaitTime = 10000; // 10 seconds wait at each patrol point
+        const passiveIdleTimeout = 10000;
+        const patrolTimeout = 30000;
+        const patrolWaitTime = 10000;
         
-        let patrolTimer, idleTimer; // Timers for the idle/patrol sequence
-        
+        let patrolTimer, idleTimer;
         let mouse = new THREE.Vector2();
         let raycaster = new THREE.Raycaster();
         let speechRecognition;
         let jawBone;
         let headBone;
-
-        // Tone.js setup for dance music
+        
         let synth = new Tone.PolySynth().toDestination();
         let danceLoop;
 
-        // UI elements
         const loadingScreen = document.getElementById('loading-screen');
         const loadingText = document.getElementById('loading-text');
         const chatHistoryEl = document.getElementById('chat-history');
@@ -294,7 +256,6 @@
         const modalMessage = document.getElementById('modal-message');
         const modalClose = document.getElementById('modal-close');
         
-        // Greetings from user requirements
         const greetings = [
             { initial: "Hello there!", followUp: "What can I do for you?" },
             { initial: "Hi!", followUp: "How can I help?" },
@@ -302,7 +263,6 @@
             { initial: "Greetings!", followUp: "Feel free to ask me anything." }
         ];
 
-        // Helper functions
         function showModal(message) {
             modalMessage.textContent = message;
             modal.style.display = 'flex';
@@ -318,7 +278,6 @@
             chatHistoryEl.prepend(messageElement);
         }
 
-        // Web Speech Recognition setup
         if ('webkitSpeechRecognition' in window) {
             speechRecognition = new webkitSpeechRecognition();
             speechRecognition.continuous = false;
@@ -328,6 +287,7 @@
             speechRecognition.onstart = () => {
                 isListening = true;
                 micButton.classList.add('pulse');
+                playAction('listening', THREE.LoopRepeat);
                 console.log("Listening...");
             };
 
@@ -342,7 +302,7 @@
                 micButton.classList.remove('pulse');
                 console.log("Listening ended.");
                 if (!isTalking && !isThinking && !isDancing) {
-                    playAction('Idle', THREE.LoopRepeat);
+                    playAction('idle2', THREE.LoopRepeat);
                 }
             };
 
@@ -358,7 +318,6 @@
             micButton.style.display = 'none';
         }
 
-        // Initialize the 3D scene
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x111827);
@@ -395,9 +354,8 @@
             window.addEventListener('mousemove', onMouseMove, false);
         }
 
-        // Load avatar model and all animations
         async function loadAssets() {
-            const loader = new THREE.GLTFLoader();
+            const loader = new GLTFLoader();
             try {
                 const gltf = await new Promise((resolve, reject) => {
                     loader.load(avatarUrl, (loadedGltf) => {
@@ -414,28 +372,26 @@
                 });
 
                 avatar = gltf.scene;
-                avatar.scale.set(0.5, 0.5, 0.5); // Adjust scale for the new model
+                avatar.scale.set(0.5, 0.5, 0.5);
                 avatar.position.y = -0.01;
                 avatar.castShadow = true;
                 scene.add(avatar);
                 mixer = new THREE.AnimationMixer(avatar);
                 
-                // Map the glTF animations to our custom names based on user's requirements
-                animations['idle2'] = gltf.animations.find(clip => clip.name === 'Idle'); // Active idle
-                animations['idle'] = gltf.animations.find(clip => clip.name === 'Idle'); // Passive idle (using same for now)
+                animations['idle2'] = gltf.animations.find(clip => clip.name === 'Idle');
+                animations['idle'] = gltf.animations.find(clip => clip.name === 'Idle');
                 animations['walk'] = gltf.animations.find(clip => clip.name === 'Walking');
                 animations['dance'] = gltf.animations.find(clip => clip.name === 'Dance');
                 animations['wave'] = gltf.animations.find(clip => clip.name === 'Waving');
                 animations['talk'] = gltf.animations.find(clip => clip.name === 'Talking');
                 animations['think'] = gltf.animations.find(clip => clip.name === 'Thinking');
-                animations['shake'] = gltf.animations.find(clip => clip.name === 'Excited'); // Using Excited as a shake stand-in
-                animations['listening'] = gltf.animations.find(clip => clip.name === 'Idle'); // Using Idle as a stand-in for listening
+                animations['shake'] = gltf.animations.find(clip => clip.name === 'Excited');
+                animations['listening'] = gltf.animations.find(clip => clip.name === 'Listening');
 
                 if (!animations['idle2']) {
                     throw new Error("Could not find 'Idle' animation in the model. Model may be incompatible.");
                 }
 
-                // Find bones for interaction
                 avatar.traverse(o => {
                     if (o.isBone) {
                         if (o.name === 'Head') headBone = o;
@@ -456,7 +412,6 @@
             }
         }
 
-        // Main animation loop
         function animate() {
             requestAnimationFrame(animate);
 
@@ -467,7 +422,7 @@
                 lipSync();
             }
 
-            if (!isMoving && !isDancing && !isTalking && !isListening) {
+            if (!isMoving && !isDancing && !isTalking && !isListening && !isThinking) {
                 checkIdlePatrol();
             }
 
@@ -479,7 +434,6 @@
             renderer.render(scene, camera);
         }
 
-        // Avatar movement logic
         function updateAvatarMovement(delta) {
             const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
             if (distance > 0.05) {
@@ -504,7 +458,6 @@
             }
         }
 
-        // Lipsync logic
         function lipSync() {
             if (!jawBone) return;
             const time = performance.now() * 0.001;
@@ -512,7 +465,6 @@
             jawBone.rotation.x = -jawRotation;
         }
 
-        // Mouse look logic
         function mouseLook() {
             if (!headBone) return;
             const target = new THREE.Vector3(mouse.x * 0.5, mouse.y * 0.5 + 1.2, -1);
@@ -520,17 +472,9 @@
             headBone.lookAt(target);
         }
 
-        // Animation playback and state management
         function playAction(clipName, loopMode = THREE.LoopOnce) {
-            if (!mixer) return;
-            const clip = animations[clipName];
-            if (!clip) {
-                console.warn(`Animation clip '${clipName}' not found. Playing idle2 instead.`);
-                playAction('idle2', THREE.LoopRepeat);
-                return;
-            }
-            const newAction = mixer.clipAction(clip);
-            newAction.setEffectiveWeight(1);
+            if (!mixer || !animations[clipName]) return;
+            const newAction = mixer.clipAction(animations[clipName]);
             if (currentAction) {
                 newAction.crossFadeFrom(currentAction, 0.3);
             }
@@ -548,7 +492,6 @@
             }
         }
         
-        // --- Patrolling and Idle behavior ---
         function resetIdleSequence() {
             lastInteractionTime = Date.now();
             isPatrolling = false;
@@ -572,7 +515,7 @@
                 if (isPatrolling) {
                     startPatrolCycle();
                 }
-            }, patrolWaitTime); // Wait 10 seconds at each point
+            }, patrolWaitTime);
         }
 
         function checkIdlePatrol() {
@@ -594,15 +537,12 @@
             }
         }
 
-        // --- Interaction Handlers ---
         function reactToInteraction() {
             resetIdleSequence();
             isMoving = false;
-            // Face the camera immediately
             faceCamera();
         }
 
-        // Event listeners
         function setupInteractions() {
             const ground = scene.children.find(obj => obj.geometry.type === 'PlaneGeometry');
 
@@ -670,13 +610,11 @@
 
         async function handleGreeting() {
             reactToInteraction();
-            isWaving = true;
             const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
             
             playAction('wave', THREE.LoopOnce);
             await speak(randomGreeting.initial);
 
-            isWaving = false;
             playAction('talk', THREE.LoopRepeat);
             await speak(randomGreeting.followUp);
 
@@ -689,9 +627,7 @@
                 if (isListening) {
                     speechRecognition.stop();
                 } else {
-                    playAction('talk', THREE.LoopRepeat);
                     speak("Go ahead, I'm listening.", () => {
-                        playAction('listening', THREE.LoopRepeat);
                         speechRecognition.start();
                     });
                 }
@@ -709,7 +645,6 @@
             isThinking = true;
             playAction('think', THREE.LoopRepeat);
 
-            // Handle "dance" trigger from chat
             if (prompt.toLowerCase().includes('dance')) {
                 isThinking = false;
                 handleDance();
@@ -748,9 +683,7 @@
 
         async function speak(text, onendedCallback = () => {}) {
             isTalking = true;
-            if (currentAction.getClip().name !== animations['talk'].name) {
-                playAction('talk', THREE.LoopRepeat);
-            }
+            playAction('talk', THREE.LoopRepeat);
             
             try {
                 const ttsPayload = {
@@ -809,12 +742,10 @@
             }
         }
 
-        // --- Dance Mode Logic ---
         function startDanceMusic() {
             if (Tone.context.state !== 'running') {
                 Tone.start();
             }
-            // A simple, catchy beat
             danceLoop = new Tone.Loop(time => {
                 const notes = ['C4', 'E4', 'G4'];
                 const note = notes[Math.floor(Math.random() * notes.length)];
@@ -854,7 +785,6 @@
             playAction('idle2', THREE.LoopRepeat);
         }
         
-        // Audio helper functions
         function base64ToArrayBuffer(base64) {
             const binaryString = window.atob(base64);
             const len = binaryString.length;
@@ -878,8 +808,8 @@
             writeString(view, 8, 'WAVE');
             writeString(view, 12, 'fmt ');
             view.setUint32(16, 16, true);
-            view.setUint16(20, 1, true); // PCM format
-            view.setUint16(22, 1, true); // Mono
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
             view.setUint32(24, sampleRate, true);
             view.setUint32(28, sampleRate * 2, true);
             view.setUint16(32, 2, true);
