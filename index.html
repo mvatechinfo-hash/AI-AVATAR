@@ -176,9 +176,10 @@
         let turnStartTime = 0;
 
         let lastInteractionTime = Date.now();
-        const IDLE_TIMEOUT_30 = 30 * 1000;
-        let lastMouseMovementTime = Date.now();
-        const MOUSE_IDLE_TIMEOUT = 5000;
+        const ACTIVE_IDLE_TIMEOUT = 10 * 1000;
+        const PATROL_START_TIMEOUT = 30 * 1000;
+        const PATROL_WAIT_TIMEOUT = 10 * 1000;
+        let lastPatrolWaitTime = 0;
 
         const chatInput = document.getElementById('chat-input');
         const sendButton = document.getElementById('send-button');
@@ -196,33 +197,36 @@
         let isGreeting = false;
         let isVoiceListReady = false;
 
-        // --- Music variables and setup using Tone.js ---
         let danceLoop;
 
         async function playDanceMusic() {
-            await Tone.start();
-            console.log("Audio context started. Playing dance music.");
+            try {
+                await Tone.start();
+                console.log("Audio context started. Playing dance music.");
 
-            const drum = new Tone.MembraneSynth().toDestination();
-            const bass = new Tone.Synth({
-                oscillator: { type: "square" },
-                envelope: {
-                    attack: 0.001,
-                    decay: 0.2,
-                    sustain: 0.1,
-                    release: 0.2
-                }
-            }).toDestination();
-            
-            danceLoop = new Tone.Sequence((time, note) => {
-                if (note === 'C1') {
-                    drum.triggerAttackRelease(note, "8n", time);
-                } else if (note) {
-                    bass.triggerAttackRelease(note, "8n", time);
-                }
-            }, ['C1', null, 'C1', null, null, 'C1', null, null, 'C1', null, 'C1', null, null, 'C1', null, 'C1']).start(0);
+                const drum = new Tone.MembraneSynth().toDestination();
+                const bass = new Tone.Synth({
+                    oscillator: { type: "square" },
+                    envelope: {
+                        attack: 0.001,
+                        decay: 0.2,
+                        sustain: 0.1,
+                        release: 0.2
+                    }
+                }).toDestination();
+                
+                danceLoop = new Tone.Sequence((time, note) => {
+                    if (note === 'C1') {
+                        drum.triggerAttackRelease(note, "8n", time);
+                    } else if (note) {
+                        bass.triggerAttackRelease(note, "8n", time);
+                    }
+                }, ['C1', null, 'C1', null, null, 'C1', null, null, 'C1', null, 'C1', null, null, 'C1', null, 'C1']).start(0);
 
-            Tone.Transport.start();
+                Tone.Transport.start();
+            } catch (e) {
+                console.error("Failed to start audio context:", e);
+            }
         }
 
         function stopDanceMusic() {
@@ -236,8 +240,6 @@
             }
             console.log("Dance music stopped.");
         }
-        // --- End of music variables and setup ---
-
 
         init();
         animate();
@@ -293,6 +295,7 @@
                 if (danceAction) {
                     danceAction.setLoop(THREE.LoopOnce); 
                     mixer.addEventListener('finished', (e) => {
+                        console.log(`Animation finished event fired for: ${e.action.getClip().name}`);
                         if (e.action === danceAction) {
                             console.log("Dance animation finished. Stopping music and returning to idle.");
                             stopDanceMusic();
@@ -416,7 +419,7 @@
                     micButton.classList.remove('listening-button');
                     isListening = false;
                     playAction(animationNames.idle2, THREE.LoopRepeat);
-                    resetIdleSequence();
+                    reactToInteraction(); // Use reactToInteraction to reset the timer and state
                 };
             } else {
                 console.warn('Speech Recognition API is not supported in this browser. The microphone button will be hidden.');
@@ -434,11 +437,12 @@
                     avatar.position.set(0, 0, 0);
                     faceCamera();
 
-                    playAction(animationNames.listening, THREE.LoopRepeat);
+                    playAction(animationNames.talk, THREE.LoopRepeat);
                     speakText("Go ahead, I'm listening.", () => {
-                         if (speechRecognition) {
-                             speechRecognition.start();
-                         }
+                        playAction(animationNames.listening, THREE.LoopRepeat);
+                        if (speechRecognition) {
+                            speechRecognition.start();
+                        }
                     });
                 }
             }
@@ -456,10 +460,11 @@
 
         function reactToInteraction() {
             if (!avatar) return;
-            resetIdleSequence();
+            lastInteractionTime = Date.now();
             isMoving = false;
             isTurning = false;
             isPatrolling = false;
+            playAction(animationNames.idle2, THREE.LoopRepeat);
         }
         
         function handleAvatarInteraction() {
@@ -528,6 +533,10 @@
                 console.log(`Aborting playAction(${name}) because greeting sequence is active.`);
                 return;
             }
+            if (isPlayingDance && name !== animationNames.dance) {
+                stopDanceMusic();
+                isPlayingDance = false;
+            }
 
             if (avatar && actions[name]) {
                 const newAction = actions[name];
@@ -560,7 +569,6 @@
         function onChatInputBlur() {
             if (!isGreeting && currentAction && currentAction.getClip().name !== animationNames.talk && currentAction.getClip().name !== animationNames.thinking) {
                 playAction(animationNames.idle, THREE.LoopRepeat);
-                resetIdleSequence();
             }
         }
 
@@ -602,8 +610,10 @@
             const apiKey = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
             if (!apiKey) {
                 console.error("API key is missing. Please add your API key to the code.");
-                appendMessage('Error: API key is missing. Please add it to the code to enable the conversation.', 'bot');
+                const errorMessage = 'Error: API key is missing. Please add it to the code to enable the conversation.';
+                appendMessage(errorMessage, 'bot');
                 playAction(animationNames.shake);
+                speakText(errorMessage);
                 return;
             }
             
@@ -632,22 +642,11 @@
                     });
 
                     if (!response.ok) {
-                        if (response.status === 403) {
-                            console.error('API call failed with status 403. Please check your API key.');
-                            playAction(animationNames.shake);
-                            appendMessage('API Error: Please check your API key and permissions.', 'bot');
-                            return;
-                        }
-                        if (response.status === 429) {
-                            console.warn(`API call failed with status 429. Retrying in ${delay}ms...`);
-                            await new Promise(res => setTimeout(res, delay));
-                            delay *= 2;
-                            retries++;
-                            continue;
-                        }
-                        console.error(`API call failed with status: ${response.status}`);
+                        const errorMessage = `API call failed with status: ${response.status}.`;
+                        console.error(errorMessage);
                         playAction(animationNames.shake);
-                        appendMessage('API Error: An unexpected error occurred.', 'bot');
+                        appendMessage(`API Error: ${errorMessage}`, 'bot');
+                        speakText(`API Error: ${errorMessage}`);
                         return;
                     }
 
@@ -664,34 +663,38 @@
                            if(!isPlayingDance) {
                                onDanceButtonClick();
                            }
-                        } else if (lowerCaseText.includes('happy') || lowerCaseText.includes('awesome')) {
-                            playAction(animationNames.happy);
-                        } else if (lowerCaseText.includes('yes') || lowerCaseText.includes('correct')) {
+                        } else if (lowerCaseText.includes('happy') || lowerCaseText.includes('awesome') || lowerCaseText.includes('great') || lowerCaseText.includes('yes') || lowerCaseText.includes('correct')) {
                             playAction(animationNames.nod);
-                        } else if (lowerCaseText.includes('no') || lowerCaseText.includes('incorrect')) {
+                        } else if (lowerCaseText.includes('no') || lowerCaseText.includes('incorrect') || lowerCaseText.includes('error') || lowerCaseText.includes('sorry')) {
                             playAction(animationNames.shake);
                         } else if (lowerCaseText.includes('important') || lowerCaseText.includes('note')) {
                             playAction(animationNames.point);
                         }
                         speakText(responseText);
                     } else {
-                        console.error("Unexpected API response structure.");
+                        const errorMessage = "Unexpected API response structure. The response was empty or malformed.";
+                        console.error(errorMessage);
                         playAction(animationNames.shake);
-                        appendMessage('API Error: The response was empty or malformed.', 'bot');
+                        appendMessage(`API Error: ${errorMessage}`, 'bot');
+                        speakText(`API Error: ${errorMessage}`);
                         return;
                     }
                     return;
                 } catch (error) {
-                    console.error('An error occurred during API call:', error);
+                    const errorMessage = `An error occurred during API call: ${error}`;
+                    console.error(errorMessage);
                     playAction(animationNames.shake);
-                    appendMessage('API Error: An error occurred during the API call.', 'bot');
+                    appendMessage(`API Error: ${errorMessage}`, 'bot');
+                    speakText(`API Error: ${errorMessage}`);
                     return;
                 }
             }
             if (retries === maxRetries) {
-                console.error("Max retries reached. API call failed.");
+                const errorMessage = "Max retries reached. API call failed.";
+                console.error(errorMessage);
                 playAction(animationNames.shake);
-                appendMessage('API Error: Could not connect to the server after multiple retries.', 'bot');
+                appendMessage(`API Error: ${errorMessage}`, 'bot');
+                speakText(`API Error: ${errorMessage}`);
             }
         }
         
@@ -704,8 +707,9 @@
                 if (synth.speaking) {
                     synth.cancel();
                 }
-
-                const utterance = new SpeechSynthesisUtterance(text);
+                const sanitizedText = text.replace(/\*\s/g, ''); 
+                
+                const utterance = new SpeechSynthesisUtterance(sanitizedText);
                 utterance.pitch = 1;
                 utterance.rate = 1;
                 utterance.volume = 1;
@@ -735,8 +739,8 @@
                         onEndCallback();
                     } else if (!isGreeting) {
                         playAction(animationNames.idle2, THREE.LoopRepeat);
+                        lastInteractionTime = Date.now();
                     }
-                    resetIdleSequence();
                 };
                 
                 utterance.onerror = (e) => {
@@ -763,11 +767,8 @@
         }
 
         function onMouseMove(event) {
-            lastMouseMovementTime = Date.now();
-            if (lastMouseMovementTime - Date.now() > MOUSE_IDLE_TIMEOUT && currentAction && currentAction.getClip().name === animationNames.idle2) {
-                 playAction(animationNames.idle, THREE.LoopRepeat);
-                 lastInteractionTime = Date.now();
-            }
+            lastInteractionTime = Date.now();
+            
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         }
@@ -776,12 +777,6 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function resetIdleSequence() {
-            lastInteractionTime = Date.now();
-            isMoving = false;
-            isTurning = false;
         }
 
         function animate() {
@@ -793,13 +788,9 @@
                 return;
             }
 
-            const timeSinceLastMouseMovement = Date.now() - lastMouseMovementTime;
-            if (!isGreeting && timeSinceLastMouseMovement > MOUSE_IDLE_TIMEOUT && currentAction && currentAction.getClip().name === animationNames.idle2) {
-                 playAction(animationNames.idle, THREE.LoopRepeat);
-                 lastInteractionTime = Date.now();
-            }
+            checkIdlePatrolSequence();
 
-            if (!isGreeting && currentAction && currentAction.getClip().name === animationNames.idle2 && leftEye && rightEye && headBone) {
+            if (!isGreeting && currentAction && (currentAction.getClip().name === animationNames.idle2 || currentAction.getClip().name === animationNames.idle) && leftEye && rightEye && headBone) {
                 lookAtTarget.set(mouse.x, mouse.y, 1).unproject(camera);
 
                 const leftEyePos = new THREE.Vector3().setFromMatrixPosition(leftEye.matrixWorld);
@@ -829,8 +820,6 @@
                 jawBone.rotation.x = 0;
             }
             
-            checkIdlePatrolSequence();
-
             if (isMoving) {
                 const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
                 console.log('Distance to target:', distance.toFixed(3), 'isMoving:', isMoving);
@@ -853,9 +842,7 @@
                     avatar.position.copy(avatar.userData.targetPosition);
                     console.log('Avatar reached target. Snapping position and stopping.');
                     isMoving = false;
-                    isPatrolling = false;
-                    playAction(animationNames.idle, THREE.LoopRepeat);
-                    lastInteractionTime = Date.now();
+                    lastPatrolWaitTime = Date.now();
                 }
             }
             
@@ -864,18 +851,33 @@
         }
 
         function checkIdlePatrolSequence() {
-             if (!isMoving && !isPatrolling && !isGreeting) {
-                const elapsedTimeSinceIdle = Date.now() - lastInteractionTime;
-                if (elapsedTimeSinceIdle > IDLE_TIMEOUT_30 && currentAction && currentAction.getClip().name === animationNames.idle) {
-                    console.log('Idle timeout triggered. Starting new patrol.');
-                    patrolDirection *= -1; 
-                    const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
-                    isPatrolling = true;
+             if (isMoving || isTurning || isGreeting || isListening || isPlayingDance) {
+                return;
+             }
+
+             const elapsedTime = Date.now() - lastInteractionTime;
+             const currentAnimationName = currentAction ? currentAction.getClip().name : null;
+
+             if (elapsedTime > ACTIVE_IDLE_TIMEOUT && currentAnimationName === animationNames.idle2) {
+                 console.log('Transitioning to Passive Idle after 10 seconds of inactivity.');
+                 playAction(animationNames.idle, THREE.LoopRepeat);
+             }
+
+             if (elapsedTime > PATROL_START_TIMEOUT && currentAnimationName === animationNames.idle) {
+                 isPatrolling = true;
+             }
+
+             if (isPatrolling && !isMoving) {
+                 const elapsedPatrolWaitTime = Date.now() - lastPatrolWaitTime;
+                 if (lastPatrolWaitTime === 0 || elapsedPatrolWaitTime > PATROL_WAIT_TIMEOUT) {
+                    console.log('Patrol mode: Moving to a new random position.');
+                    const randomX = (Math.random() - 0.5) * patrolLimit * 2;
+                    const randomZ = (Math.random() - 0.5) * patrolLimit * 2;
+                    const newPatrolPosition = new THREE.Vector3(randomX, 0, randomZ);
                     setNewTarget(newPatrolPosition);
                  }
-            }
+             }
         }
     </script>
 </body>
 </html>
-
