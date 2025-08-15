@@ -243,9 +243,7 @@
                 
                 mixer.addEventListener('finished', (event) => {
                     if (event.action._clip.name === animationNames.dance) {
-                        if (danceLoop) {
-                            danceLoop.stop();
-                        }
+                        stopDanceMusic(); // Stop music when dance animation finishes
                         playAction(animationNames.idle2, THREE.LoopRepeat);
                     }
                 });
@@ -300,26 +298,22 @@
             }
             isGreeting = true;
             
-            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+            // Fix: Reset avatar position and face camera on greeting
             reactToInteraction();
+
+            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
 
             console.log('Starting greeting sequence with wave animation...');
             playAction(animationNames.wave, THREE.LoopOnce, 2); 
             
-            const onWaveFinished = (event) => {
-                if (event.action.getClip().name === animationNames.wave) {
-                    mixer.removeEventListener('finished', onWaveFinished);
-                    playAction(animationNames.talk, THREE.LoopRepeat);
-                    speakText(randomGreeting.initial, () => {
-                        speakText(randomGreeting.followUp, () => {
-                            playAction(animationNames.idle2, THREE.LoopRepeat);
-                            isGreeting = false;
-                            resetIdleSequence();
-                        });
-                    });
-                }
-            };
-            mixer.addEventListener('finished', onWaveFinished);
+            speakText(randomGreeting.initial, () => {
+                playAction(animationNames.talk, THREE.LoopRepeat);
+                speakText(randomGreeting.followUp, () => {
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                    isGreeting = false;
+                    resetIdleSequence();
+                });
+            });
         }
 
         function initSpeechRecognition() {
@@ -372,9 +366,7 @@
                     speechRecognition.stop();
                 } else {
                     reactToInteraction();
-                    avatar.position.set(0, 0, 0);
-                    faceCamera();
-
+                    // Mic button logic already centers and faces camera via reactToInteraction
                     playAction(animationNames.talk, THREE.LoopRepeat);
                     speakText("Go ahead, I'm listening.", () => {
                          playAction(animationNames.listening, THREE.LoopRepeat);
@@ -415,18 +407,18 @@
         function stopDanceMusic() {
             if (danceLoop) {
                 danceLoop.stop();
+                danceLoop.dispose(); // Clean up the loop
+                danceLoop = null;
             }
-            Tone.Transport.stop();
+            if (Tone.Transport.state === 'started') {
+                Tone.Transport.stop();
+            }
             console.log("Dance music stopped.");
         }
 
         function onDanceButtonClick() {
             if (!avatar || isGreeting) return;
             reactToInteraction();
-            isMoving = false;
-            isTurning = false;
-            isPatrolling = false;
-            faceCamera();
             playAction(animationNames.dance, THREE.LoopOnce);
             playDanceMusic();
         }
@@ -437,6 +429,9 @@
             isMoving = false;
             isTurning = false;
             isPatrolling = false;
+            // Fix: Position avatar at center and face camera for any interaction
+            avatar.position.set(0, 0, 0);
+            faceCamera();
         }
         
         function handleAvatarInteraction() {
@@ -507,6 +502,11 @@
             if (avatar && actions[name]) {
                 const newAction = actions[name];
                 
+                // Fix: Stop music if a new action is triggered while dancing
+                if (currentAction && currentAction.getClip().name === animationNames.dance) {
+                    stopDanceMusic();
+                }
+
                 if (currentAction && currentAction !== newAction) {
                     currentAction.fadeOut(0.5); 
                 }
@@ -559,7 +559,7 @@
                 return;
             }
 
-            const apiKey = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
+            const apiKey = "";
             if (!apiKey) {
                 console.error("API key is missing. Please add your API key to the code.");
                 appendMessage('Error: API key is missing. Please add it to the code to enable the conversation.', 'bot');
