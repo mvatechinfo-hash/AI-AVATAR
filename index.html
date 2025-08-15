@@ -40,6 +40,7 @@
             background-color: rgba(31, 41, 55, 0.9); /* Slightly more opaque for better readability */
             border-radius: 1rem 1rem 0 0; /* Rounded corners at the top only */
             backdrop-filter: blur(5px);
+            transition: all 0.3s ease-in-out; /* Add transition for minimize/maximize animation */
         }
         /* Desktop/Tablet styles: Revert to right-side sidebar */
         @media (min-width: 768px) {
@@ -62,6 +63,7 @@
             border-radius: 0.75rem;
             background-color: #1f2937;
             margin-bottom: 1rem;
+            transition: height 0.3s ease-in-out; /* For the slide effect */
         }
         .chat-message {
             margin-bottom: 1rem;
@@ -95,6 +97,23 @@
                 box-shadow: 0 0 20px rgba(255, 255, 255, 1);
             }
         }
+
+        /* Minimize state for the chat history */
+        .minimized-chat-history {
+            height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            opacity: 0;
+        }
+
+        /* Minimize state for the chat container on mobile */
+        @media (max-width: 767px) {
+            .chat-ui-container.minimized {
+                height: auto; /* Allow height to shrink to content */
+                padding: 0.5rem 1rem;
+                border-radius: 1rem 1rem 0 0;
+            }
+        }
     </style>
     <script type="importmap">
         {
@@ -115,6 +134,13 @@
     </div>
 
     <div id="chat-ui" class="chat-ui-container hidden">
+        <!-- New header for the chat UI -->
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold">AI Companion</h2>
+            <button id="minimize-button" class="text-gray-400 hover:text-white transition-colors">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+        </div>
         <div id="chat-history" class="mb-4"></div>
         <div class="flex flex-col w-full space-y-2">
             <div class="flex space-x-2 w-full">
@@ -208,6 +234,7 @@
         const sendButton = document.getElementById('send-button');
         const micButton = document.getElementById('mic-button');
         const danceButton = document.getElementById('dance-button');
+        const minimizeButton = document.getElementById('minimize-button');
         const loadingScreen = document.getElementById('loading-screen');
         const chatUiContainer = document.getElementById('chat-ui');
         const chatHistory = document.getElementById('chat-history');
@@ -221,6 +248,7 @@
         let isVoiceListReady = false;
 
         let danceLoop;
+        let chatMinimized = false;
 
         // Helper function to get a random animation name from an array
         function getRandomAnimation(animationArray) {
@@ -378,6 +406,8 @@
             micButton.addEventListener('click', toggleSpeechRecognition);
             
             danceButton.addEventListener('click', onDanceButtonClick);
+            minimizeButton.addEventListener('click', toggleChatMinimize);
+
             initSpeechRecognition();
             initSpeechSynthesis();
         }
@@ -492,6 +522,13 @@
             isPlayingDance = true;
             playAction(animationNames.dance);
             playDanceMusic();
+        }
+
+        function toggleChatMinimize() {
+            chatMinimized = !chatMinimized;
+            chatHistory.classList.toggle('minimized-chat-history', chatMinimized);
+            chatUiContainer.classList.toggle('minimized', chatMinimized);
+            minimizeButton.innerHTML = chatMinimized ? '<i class="fas fa-chevron-up"></i>' : '<i class="fas fa-chevron-down"></i>';
         }
 
         function reactToInteraction() {
