@@ -165,7 +165,7 @@
         let isGreeting = false;
         let isMoving = false;
         let isTurning = false;
-        let isPatrolling = false; // This is not used but kept for clarity
+        let isPatrolling = false;
         let targetQuaternion = new THREE.Quaternion();
         const turnDuration = 500;
         let turnStartTime = 0;
@@ -243,7 +243,7 @@
                 
                 mixer.addEventListener('finished', (event) => {
                     if (event.action._clip.name === animationNames.dance) {
-                        stopDanceMusic(); // Stop music when dance animation finishes
+                        stopDanceMusic();
                         playAction(animationNames.idle2, THREE.LoopRepeat);
                     }
                 });
@@ -273,7 +273,10 @@
             window.addEventListener('resize', onWindowResize);
             window.addEventListener('mousemove', onMouseMove);
             
-            chatInput.addEventListener('focus', startGreetingSequence);
+            chatInput.addEventListener('focus', () => {
+                reactToInteraction();
+                startGreetingSequence();
+            });
             
             sendButton.addEventListener('click', onSendMessage);
             chatInput.addEventListener('keydown', (event) => {
@@ -298,12 +301,8 @@
             }
             isGreeting = true;
             
-            // Fix: Reset avatar position and face camera on greeting
-            reactToInteraction();
-
             const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-
-            console.log('Starting greeting sequence with wave animation...');
+            
             playAction(animationNames.wave, THREE.LoopOnce, 2); 
             
             speakText(randomGreeting.initial, () => {
@@ -366,7 +365,6 @@
                     speechRecognition.stop();
                 } else {
                     reactToInteraction();
-                    // Mic button logic already centers and faces camera via reactToInteraction
                     playAction(animationNames.talk, THREE.LoopRepeat);
                     speakText("Go ahead, I'm listening.", () => {
                          playAction(animationNames.listening, THREE.LoopRepeat);
@@ -407,7 +405,7 @@
         function stopDanceMusic() {
             if (danceLoop) {
                 danceLoop.stop();
-                danceLoop.dispose(); // Clean up the loop
+                danceLoop.dispose();
                 danceLoop = null;
             }
             if (Tone.Transport.state === 'started') {
@@ -429,13 +427,13 @@
             isMoving = false;
             isTurning = false;
             isPatrolling = false;
-            // Fix: Position avatar at center and face camera for any interaction
             avatar.position.set(0, 0, 0);
             faceCamera();
         }
         
         function handleAvatarInteraction() {
             console.log('handleAvatarInteraction called.');
+            reactToInteraction(); // Call reactToInteraction for avatar clicks
             startGreetingSequence();
         }
 
@@ -458,7 +456,6 @@
             const intersects = new THREE.Vector3();
             if (raycaster.ray.intersectPlane(groundPlane, intersects)) {
                 console.log('Ground clicked at:', intersects);
-                reactToInteraction();
                 isPatrolling = false;
                 setNewTarget(intersects);
             }
@@ -466,6 +463,7 @@
 
         function setNewTarget(newPosition) {
             if (!avatar || isGreeting) return;
+            stopDanceMusic();
 
             if (avatar.position.distanceTo(newPosition) < 0.05) {
                 isMoving = false;
@@ -476,6 +474,7 @@
             avatar.userData.targetPosition = newPosition;
 
             const direction = new THREE.Vector3().subVectors(newPosition, avatar.position).normalize();
+            // Calculate the target rotation based on the direction of movement
             targetQuaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
 
             isTurning = true;
@@ -502,7 +501,6 @@
             if (avatar && actions[name]) {
                 const newAction = actions[name];
                 
-                // Fix: Stop music if a new action is triggered while dancing
                 if (currentAction && currentAction.getClip().name === animationNames.dance) {
                     stopDanceMusic();
                 }
