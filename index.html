@@ -7,7 +7,7 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.52/Tone.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
@@ -196,76 +196,51 @@
         let isGreeting = false;
         
         // --- Music variables and setup using Tone.js ---
-        let hipHopBeat;
-        let isPlayingMusic = false;
+        // Variable to hold the dance music loop
+        let danceLoop;
 
-        // Create a simple hip-hop beat using a synth and a sequence
-        function setupMusic() {
-            // A simple kick drum synth
-            const kick = new Tone.MembraneSynth().toDestination();
-            // A simple snare drum synth
-            const snare = new Tone.NoiseSynth({
-                noise: { type: 'pink' },
-                envelope: { attack: 0.005, decay: 0.1, sustain: 0.1, release: 0.2 }
+        // Function to play dance music
+        async function playDanceMusic() {
+            // Start the audio context
+            await Tone.start();
+            console.log("Audio context started. Playing dance music.");
+
+            // Create synths for the drums and bass
+            const drum = new Tone.MembraneSynth().toDestination();
+            const bass = new Tone.Synth({
+                oscillator: { type: "square" },
+                envelope: {
+                    attack: 0.001,
+                    decay: 0.2,
+                    sustain: 0.1,
+                    release: 0.2
+                }
             }).toDestination();
             
-            // Define the sequence of the beat
-            const beatSequence = [
-                // Beat 1
-                { time: '0:0:0', note: 'C1', drum: 'kick' },
-                { time: '0:1:0', note: null, drum: 'snare' },
-                // Beat 2
-                { time: '0:2:0', note: 'C1', drum: 'kick' },
-                { time: '0:3:0', note: null, drum: 'snare' },
-                // Beat 3
-                { time: '1:0:0', note: 'C1', drum: 'kick' },
-                { time: '1:1:0', note: null, drum: 'snare' },
-                // Beat 4
-                { time: '1:2:0', note: 'C1', drum: 'kick' },
-                { time: '1:3:0', note: null, drum: 'snare' },
-                // Add some variations
-                { time: '2:0:0', note: 'C1', drum: 'kick' },
-                { time: '2:1:2', note: null, drum: 'snare' },
-                { time: '2:2:0', note: 'C1', drum: 'kick' },
-                { time: '2:3:0', note: null, drum: 'snare' },
-                { time: '3:0:0', note: 'C1', drum: 'kick' },
-                { time: '3:1:0', note: null, drum: 'snare' },
-                { time: '3:2:0', note: 'C1', drum: 'kick' },
-                { time: '3:3:0', note: null, drum: 'snare' },
-            ];
-            
-            // Create a Tone.Part to sequence the beat
-            hipHopBeat = new Tone.Part((time, value) => {
-                if (value.drum === 'kick') {
-                    kick.triggerAttackRelease('C1', '8n', time);
-                } else if (value.drum === 'snare') {
-                    snare.triggerAttackRelease('8n', time);
+            // Define the sequence for the dance beat
+            danceLoop = new Tone.Sequence((time, note) => {
+                if (note === 'C1') {
+                    drum.triggerAttackRelease(note, "8n", time);
+                } else if (note) {
+                    bass.triggerAttackRelease(note, "8n", time);
                 }
-            }, beatSequence).start(0);
+            }, ['C1', null, 'C1', null, null, 'C1', null, null, 'C1', null, 'C1', null, null, 'C1', null, 'C1']).start(0);
 
-            // The part will loop forever
-            hipHopBeat.loop = true;
-            hipHopBeat.loopEnd = '4m';
+            // Start the Tone.js transport to begin playback
+            Tone.Transport.start();
         }
 
-        // Function to start the music playback
-        function startMusic() {
-            if (!isPlayingMusic) {
-                console.log("Starting hip-hop beat.");
-                Tone.start();
-                Tone.Transport.bpm.value = 90;
-                Tone.Transport.start();
-                isPlayingMusic = true;
+        // Function to stop the dance music
+        function stopDanceMusic() {
+            if (danceLoop) {
+                danceLoop.stop();
+                danceLoop.dispose(); // Clean up the loop
+                danceLoop = null;
             }
-        }
-
-        // Function to stop the music playback
-        function stopMusic() {
-            if (isPlayingMusic) {
-                console.log("Stopping hip-hop beat.");
+            if (Tone.Transport.state === 'started') {
                 Tone.Transport.stop();
-                isPlayingMusic = false;
             }
+            console.log("Dance music stopped.");
         }
         // --- End of music variables and setup ---
 
@@ -319,14 +294,14 @@
                     actions[clip.name] = action;
                 });
                 
-                // Get the dance action to set its loop behavior later
+                // Set dance animation to play only once and add listener to stop music when it finishes
                 danceAction = actions[animationNames.dance];
                 if (danceAction) {
-                    danceAction.setLoop(THREE.LoopOnce); // Set dance animation to play only once
+                    danceAction.setLoop(THREE.LoopOnce); 
                     mixer.addEventListener('finished', (e) => {
                         if (e.action === danceAction) {
                             console.log("Dance animation finished. Stopping music and returning to idle.");
-                            stopMusic();
+                            stopDanceMusic(); // Use the user-provided function
                             isPlayingDance = false;
                             playAction(animationNames.idle2, THREE.LoopRepeat);
                         }
@@ -335,7 +310,6 @@
                     console.warn("Dance animation not found in GLB file.");
                 }
                 
-                setupMusic(); // Setup the music after the model is loaded
                 startGreetingSequence();
                 
                 faceCamera();
@@ -446,26 +420,7 @@
             }
         }
         
-        function toggleSpeechRecognition() {
-            console.log('Microphone button clicked. isListening:', isListening);
-            if (speechRecognition) {
-                if (isListening) {
-                    speechRecognition.stop();
-                } else {
-                    reactToInteraction();
-                    avatar.position.set(0, 0, 0);
-                    faceCamera();
-
-                    playAction(animationNames.listening, THREE.LoopRepeat);
-                    speakText("Go ahead, I'm listening.", () => {
-                         if (speechRecognition) {
-                             speechRecognition.start();
-                         }
-                    });
-                }
-            }
-        }
-
+        // onDanceButtonClick now uses the new music functions
         function onDanceButtonClick() {
             if (!avatar || isPlayingDance) return;
             reactToInteraction();
@@ -473,7 +428,7 @@
             faceCamera();
             isPlayingDance = true;
             playAction(animationNames.dance); // Play dance, it is already set to LoopOnce
-            startMusic();
+            playDanceMusic(); // Call the user-provided music function
         }
 
         function reactToInteraction() {
@@ -546,17 +501,6 @@
         function playAction(name, loop = THREE.LoopOnce, timeScale = 1) {
             console.log(`Attempting to play animation: ${name}. Current action is: ${currentAction ? currentAction.getClip().name : 'none'}`);
             
-            // --- Music Control Logic ---
-            const prevActionName = currentAction ? currentAction.getClip().name : '';
-            if (name === animationNames.dance && prevActionName !== animationNames.dance) {
-                startMusic();
-                isPlayingDance = true;
-            } else if (name !== animationNames.dance && prevActionName === animationNames.dance) {
-                stopMusic();
-                isPlayingDance = false;
-            }
-            // --- End of Music Control Logic ---
-
             if (isGreeting && name !== animationNames.wave && name !== animationNames.talk) {
                 console.log(`Aborting playAction(${name}) because greeting sequence is active.`);
                 return;
