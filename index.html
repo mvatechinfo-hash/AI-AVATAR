@@ -78,6 +78,7 @@
             }
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <script type="importmap">
         {
             "imports": {
@@ -190,11 +191,13 @@
         let speechRecognition;
         let isListening = false;
         let isGreeting = false;
+        
+        let danceLoop;
 
         init();
         animate();
 
-        function init() {
+        async function init() {
             canvasContainer = document.getElementById('canvas-container');
 
             scene = new THREE.Scene();
@@ -241,6 +244,15 @@
                     actions[clip.name] = action;
                 });
                 
+                mixer.addEventListener('finished', (event) => {
+                    if (event.action._clip.name === animationNames.dance) {
+                        if (danceLoop) {
+                            danceLoop.stop();
+                        }
+                        playAction(animationNames.idle, THREE.LoopRepeat);
+                    }
+                });
+                
                 startGreetingSequence();
                 
                 faceCamera();
@@ -267,7 +279,6 @@
             window.addEventListener('mousemove', onMouseMove);
             
             chatInput.addEventListener('focus', onChatInputFocus);
-            chatInput.addEventListener('blur', onChatInputBlur);
             
             sendButton.addEventListener('click', onSendMessage);
             chatInput.addEventListener('keydown', (event) => {
@@ -361,8 +372,10 @@
                     avatar.position.set(0, 0, 0);
                     faceCamera();
 
-                    playAction(animationNames.listening, THREE.LoopRepeat);
+                    // Play the talk animation while speaking "Go ahead, I'm listening."
                     speakText("Go ahead, I'm listening.", () => {
+                         // After speaking, play the listening animation and start the recognition
+                         playAction(animationNames.listening, THREE.LoopRepeat);
                          if (speechRecognition) {
                              speechRecognition.start();
                          }
@@ -370,15 +383,50 @@
                 }
             }
         }
+        
+        async function playDanceMusic() {
+            await Tone.start();
+            console.log("Audio context started. Playing dance music.");
+
+            const drum = new Tone.MembraneSynth().toDestination();
+            const bass = new Tone.Synth({
+                oscillator: { type: "square" },
+                envelope: {
+                    attack: 0.001,
+                    decay: 0.2,
+                    sustain: 0.1,
+                    release: 0.2
+                }
+            }).toDestination();
+            
+            danceLoop = new Tone.Sequence((time, note) => {
+                if (note === 'C1') {
+                    drum.triggerAttackRelease(note, "8n", time);
+                } else if (note) {
+                    bass.triggerAttackRelease(note, "8n", time);
+                }
+            }, ['C1', null, 'C1', null, null, 'C1', null, null, 'C1', null, 'C1', null, null, 'C1', null, 'C1']).start(0);
+
+            Tone.Transport.start();
+        }
+
+        function stopDanceMusic() {
+            if (danceLoop) {
+                danceLoop.stop();
+            }
+            Tone.Transport.stop();
+            console.log("Dance music stopped.");
+        }
 
         function onDanceButtonClick() {
-            if (!avatar) return;
-            resetIdleSequence();
+            if (!avatar || isGreeting) return;
+            reactToInteraction();
             isMoving = false;
             isTurning = false;
             isPatrolling = false;
             faceCamera();
-            playAction(animationNames.dance, THREE.LoopRepeat);
+            playAction(animationNames.dance, THREE.LoopOnce);
+            playDanceMusic();
         }
 
         function reactToInteraction() {
@@ -399,6 +447,7 @@
 
         function onCanvasClick(event) {
             console.log('onCanvasClick called.');
+            if (isGreeting) return;
             const rect = renderer.domElement.getBoundingClientRect();
             pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -478,17 +527,11 @@
         }
         
         function onChatInputFocus() {
+            if (isGreeting) return;
             reactToInteraction();
             avatar.position.set(0, 0, 0);
             faceCamera();
             startGreetingSequence();
-        }
-
-        function onChatInputBlur() {
-            if (!isGreeting && currentAction && currentAction.getClip().name !== animationNames.talk && currentAction.getClip().name !== animationNames.thinking) {
-                playAction(animationNames.idle, THREE.LoopRepeat);
-                resetIdleSequence();
-            }
         }
 
         function onSendMessage() {
@@ -520,11 +563,12 @@
 
         async function generateResponseFromAPI(userPrompt) {
             if (userPrompt.toLowerCase().trim() === 'dance') {
-                playAction(animationNames.dance, THREE.LoopRepeat);
+                playAction(animationNames.dance, THREE.LoopOnce);
+                playDanceMusic();
                 return;
             }
 
-            const apiKey = "";
+            const apiKey = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
             if (!apiKey) {
                 console.error("API key is missing. Please add your API key to the code.");
                 appendMessage('Error: API key is missing. Please add it to the code to enable the conversation.', 'bot');
@@ -586,7 +630,8 @@
 
                         const lowerCaseText = responseText.toLowerCase();
                         if (lowerCaseText.includes('dance')) {
-                            playAction(animationNames.dance, THREE.LoopRepeat);
+                            playAction(animationNames.dance, THREE.LoopOnce);
+                            playDanceMusic();
                         } else if (lowerCaseText.includes('happy') || lowerCaseText.includes('awesome')) {
                             playAction(animationNames.happy);
                         } else if (lowerCaseText.includes('yes') || lowerCaseText.includes('correct')) {
@@ -682,11 +727,8 @@
         }
 
         function onMouseMove(event) {
+            if (isGreeting) return; // Ignore mouse movements during greeting
             lastMouseMovementTime = Date.now();
-            if (timeSinceLastMouseMovement > MOUSE_IDLE_TIMEOUT && currentAction && currentAction.getClip().name === animationNames.idle2) {
-                 playAction(animationNames.idle, THREE.LoopRepeat);
-                 lastInteractionTime = Date.now();
-            }
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
         }
@@ -711,6 +753,8 @@
                 renderer.render(scene, camera);
                 return;
             }
+            
+            const delta = clock.getDelta();
 
             const timeSinceLastMouseMovement = Date.now() - lastMouseMovementTime;
             if (!isGreeting && timeSinceLastMouseMovement > MOUSE_IDLE_TIMEOUT && currentAction && currentAction.getClip().name === animationNames.idle2) {
@@ -752,7 +796,6 @@
 
             if (isMoving) {
                 const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
-                console.log('Distance to target:', distance.toFixed(3), 'isMoving:', isMoving);
 
                 if (distance > 0.05) {
                     if (isTurning) {
@@ -763,14 +806,11 @@
                             isTurning = false;
                         }
                     } else {
-                        avatar.quaternion.slerp(targetQuaternion, 0.05);
+                        const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
+                        avatar.position.addScaledVector(direction, patrolSpeed);
                     }
-
-                    const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
-                    avatar.position.addScaledVector(direction, patrolSpeed);
                 } else {
                     avatar.position.copy(avatar.userData.targetPosition);
-                    console.log('Avatar reached target. Snapping position and stopping.');
                     isMoving = false;
                     isPatrolling = false;
                     playAction(animationNames.idle, THREE.LoopRepeat);
@@ -778,14 +818,14 @@
                 }
             }
             
-            if (mixer) mixer.update(clock.getDelta());
+            if (mixer) mixer.update(delta);
             renderer.render(scene, camera);
         }
 
         function checkIdlePatrolSequence() {
-             if (!isMoving && !isPatrolling && !isGreeting) {
+             if (!isMoving && !isPatrolling && !isGreeting && currentAction && currentAction.getClip().name === animationNames.idle) {
                 const elapsedTimeSinceIdle = Date.now() - lastInteractionTime;
-                if (elapsedTimeSinceIdle > IDLE_TIMEOUT_30 && currentAction && currentAction.getClip().name === animationNames.idle) {
+                if (elapsedTimeSinceIdle > IDLE_TIMEOUT_30) {
                     console.log('Idle timeout triggered. Starting new patrol.');
                     patrolDirection *= -1; 
                     const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
