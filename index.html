@@ -243,8 +243,7 @@
             setTimeout(() => {
                 loadingScreen.remove();
                 chatUIContainer.classList.remove('hidden');
-                // Initial greeting logic
-                greetAvatar();
+                // The initial greeting will now be triggered by the user's first click.
             }, 500);
             
             // Start with an active idle animation
@@ -256,8 +255,9 @@
         
         // GLTF Loader to load the avatar model
         const loader = new GLTFLoader(manager);
+        // Corrected GLB file path to your specified file
         loader.load(
-            'https://models.readyplayer.me/65910419e59d9f94562080a2.glb',
+            'chatbot_avatar.glb',
             function (gltf) {
                 avatar = gltf.scene;
                 avatar.scale.set(1.1, 1.1, 1.1);
