@@ -149,10 +149,10 @@
         };
 
         const greetings = [
-            "Hello there!, what can I do for you?",
-            "Hi, what can I do for you?",
-            "Hey, nice to see you!",
-            "Greetings!, Feel free to ask me anything."
+            { initial: "Hello there!", followUp: "What can I do for you?" },
+            { initial: "Hi!", followUp: "How can I help?" },
+            { initial: "Hey!", followUp: "Nice to see you!" },
+            { initial: "Greetings!", followUp: "Feel free to ask me anything." }
         ];
 
         let currentAction;
@@ -188,7 +188,7 @@
         const synth = window.speechSynthesis;
         let speechRecognition;
         let isListening = false;
-        let greetingTimeoutId = null;
+        let isGreeting = false;
 
         init();
         animate();
@@ -240,8 +240,9 @@
                     actions[clip.name] = action;
                 });
 
-                // Start the initial greeting sequence
-                startInitialGreeting();
+                // --- [UPDATE] ---
+                // The greeting sequence now runs on load.
+                startGreetingSequence();
 
                 mixer.addEventListener('finished', onAnimationFinished);
 
@@ -249,8 +250,10 @@
 
                 setTimeout(() => {
                     loadingScreen.style.opacity = '0';
-                    setTimeout(() => loadingScreen.classList.add('hidden'), 500);
-                    chatUiContainer.classList.remove('hidden');
+                    setTimeout(() => {
+                        loadingScreen.classList.add('hidden');
+                        chatUiContainer.classList.remove('hidden');
+                    }, 500);
                 }, 500);
 
             },
@@ -265,16 +268,21 @@
 
             window.addEventListener('resize', onWindowResize);
             window.addEventListener('mousemove', onMouseMove);
+            
             chatInput.addEventListener('focus', onChatInputFocus);
             chatInput.addEventListener('blur', onChatInputBlur);
+            
             sendButton.addEventListener('click', onSendMessage);
             chatInput.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter') {
                     onSendMessage();
                 }
             });
+            
             renderer.domElement.addEventListener('mousedown', onCanvasClick, false);
+            
             micButton.addEventListener('click', toggleSpeechRecognition);
+            
             danceButton.addEventListener('click', onDanceButtonClick);
             initSpeechRecognition();
         }
@@ -282,28 +290,27 @@
         function onAnimationFinished(event) {
             const clipName = event.action.getClip().name;
             if (clipName === animationNames.walk) {
-                 // After walking is done, transition back to relaxed idle
                  playAction(animationNames.idle, THREE.LoopRepeat);
             }
         }
-
-        function startInitialGreeting() {
-            // Pick a random greeting
-            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-            const parts = randomGreeting.split(',');
-            const firstPart = parts[0].trim();
-            const secondPart = parts.slice(1).join(',').trim();
-
-            playAction(animationNames.wave, THREE.LoopOnce, 2); // Start the wave animation
+        
+        // --- [UPDATE] ---
+        // This function now handles the full, two-part greeting sequence with animations.
+        function startGreetingSequence() {
+            if (isGreeting) return;
+            isGreeting = true;
             
-            // Speak the first part of the greeting.
-            speakText(firstPart, () => {
-                // When the first part is done, speak the second part with talk animation.
+            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+
+            playAction(animationNames.wave, THREE.LoopOnce, 2); 
+            
+            speakText(randomGreeting.initial, () => {
                 playAction(animationNames.talk, THREE.LoopRepeat);
-                speakText(secondPart, () => {
+                speakText(randomGreeting.followUp, () => {
                     playAction(animationNames.idle2, THREE.LoopRepeat);
-                }, false);
-            }, false, true);
+                    isGreeting = false;
+                });
+            });
         }
 
         function initSpeechRecognition() {
@@ -346,7 +353,9 @@
                 micButton.style.display = 'none';
             }
         }
-
+        
+        // --- [UPDATE] ---
+        // This function now plays the listening animation.
         function toggleSpeechRecognition() {
             if (speechRecognition) {
                 if (isListening) {
@@ -377,13 +386,14 @@
             isMoving = false;
             isTurning = false;
         }
-
+        
+        // --- [UPDATE] ---
+        // This function now calls the greeting sequence when the avatar is clicked.
         function handleAvatarInteraction() {
             reactToInteraction();
             avatar.position.set(0, 0, 0);
             faceCamera();
-            // Start engaged idle when avatar is clicked
-            playAction(animationNames.idle2, THREE.LoopRepeat);
+            startGreetingSequence();
         }
 
         function onCanvasClick(event) {
@@ -450,17 +460,18 @@
                 console.warn(`Animation clip '${name}' not found.`);
             }
         }
-
+        
+        // --- [UPDATE] ---
+        // This function now calls the greeting sequence when the chat input is focused.
         function onChatInputFocus() {
             reactToInteraction();
             avatar.position.set(0, 0, 0);
             faceCamera();
-            // Start engaged idle when chatbox is clicked
-            playAction(animationNames.idle2, THREE.LoopRepeat);
+            startGreetingSequence();
         }
 
         function onChatInputBlur() {
-            if (currentAction !== actions[animationNames.talk] && currentAction !== actions[animationNames.thinking]) {
+            if (currentAction !== actions[animationNames.talk] && currentAction !== actions[animationNames.thinking] && !isGreeting) {
                 playAction(animationNames.idle, THREE.LoopRepeat);
                 resetIdleSequence();
             }
@@ -603,7 +614,7 @@
                 }
 
                 utterance.onstart = () => {
-                     if (currentAction.getClip().name !== animationNames.wave) {
+                     if (currentAction.getClip().name !== animationNames.wave && !isGreeting) {
                          playAction(animationNames.talk, THREE.LoopRepeat);
                      }
                 };
@@ -637,7 +648,6 @@
         function onMouseMove(event) {
             lastMouseMovementTime = Date.now();
             if (avatar && currentAction.getClip().name !== animationNames.idle2 && currentAction.getClip().name !== animationNames.talk && !isMoving && !isTurning) {
-                // Switch to engaged idle when the mouse moves, unless other animations are playing
                 playAction(animationNames.idle2, THREE.LoopRepeat);
             }
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -665,14 +675,12 @@
                 return;
             }
 
-            // Mouse-based idle switching logic
             const timeSinceLastMouseMovement = Date.now() - lastMouseMovementTime;
             if (timeSinceLastMouseMovement > MOUSE_IDLE_TIMEOUT && currentAction.getClip().name === animationNames.idle2) {
                  playAction(animationNames.idle, THREE.LoopRepeat);
                  lastInteractionTime = Date.now();
             }
 
-            // Eye and head tracking for engaged idle state
             if (currentAction.getClip().name === animationNames.idle2 && leftEye && rightEye && headBone) {
                 lookAtTarget.set(mouse.x, mouse.y, 1).unproject(camera);
 
@@ -695,13 +703,11 @@
                 headBone.quaternion.slerp(headQuaternion, rotationLimit * 0.5);
             }
 
-            // Lip-syncing: make the jaw move when the avatar is speaking
             if (synth.speaking && jawBone) {
                 const time = Date.now() * 0.005;
                 const jawRotation = Math.sin(time) * 0.05 + 0.02;
                 jawBone.rotation.x = -jawRotation;
             } else if (jawBone) {
-                // Ensure jaw is closed when not speaking
                 jawBone.rotation.x = 0;
             }
             
@@ -735,18 +741,16 @@
         }
 
         function checkIdlePatrolSequence() {
-             // Only start the patrol sequence if the avatar is in the relaxed idle state
              if (currentAction.getClip().name !== animationNames.idle) {
-                lastInteractionTime = Date.now(); // Reset the timer if not in relaxed idle
+                lastInteractionTime = Date.now(); 
                 return;
             }
 
             const elapsedTimeSinceIdle = Date.now() - lastInteractionTime;
 
-            // Wait for 30 seconds of relaxed idle before starting to walk
             if (elapsedTimeSinceIdle > IDLE_TIMEOUT_30) {
                  if (!isMoving) {
-                    patrolDirection *= -1; // Reverse direction
+                    patrolDirection *= -1; 
                     const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
                     setNewTarget(newPatrolPosition);
                  }
