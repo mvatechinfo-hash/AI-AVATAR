@@ -162,18 +162,16 @@
         let currentAction;
         const actions = {};
 
-        let patrolDirection = 1;
-        const patrolSpeed = 0.008;
-        const patrolLimit = 1.5;
+        let isGreeting = false;
         let isMoving = false;
         let isTurning = false;
-        let isPatrolling = false;
+        let isPatrolling = false; // This is not used but kept for clarity
         let targetQuaternion = new THREE.Quaternion();
         const turnDuration = 500;
         let turnStartTime = 0;
 
         let lastInteractionTime = Date.now();
-        const IDLE_TIMEOUT_30 = 30 * 1000;
+        const IDLE_TIMEOUT_10 = 10 * 1000;
         let lastMouseMovementTime = Date.now();
         const MOUSE_IDLE_TIMEOUT = 5000;
 
@@ -190,7 +188,6 @@
         const synth = window.speechSynthesis;
         let speechRecognition;
         let isListening = false;
-        let isGreeting = false;
         
         let danceLoop;
 
@@ -249,7 +246,7 @@
                         if (danceLoop) {
                             danceLoop.stop();
                         }
-                        playAction(animationNames.idle, THREE.LoopRepeat);
+                        playAction(animationNames.idle2, THREE.LoopRepeat);
                     }
                 });
                 
@@ -278,7 +275,7 @@
             window.addEventListener('resize', onWindowResize);
             window.addEventListener('mousemove', onMouseMove);
             
-            chatInput.addEventListener('focus', onChatInputFocus);
+            chatInput.addEventListener('focus', startGreetingSequence);
             
             sendButton.addEventListener('click', onSendMessage);
             chatInput.addEventListener('keydown', (event) => {
@@ -304,19 +301,25 @@
             isGreeting = true;
             
             const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+            reactToInteraction();
 
             console.log('Starting greeting sequence with wave animation...');
             playAction(animationNames.wave, THREE.LoopOnce, 2); 
             
-            speakText(randomGreeting.initial, () => {
-                console.log('First speech finished, starting second speech and talk animation.');
-                playAction(animationNames.talk, THREE.LoopRepeat);
-                speakText(randomGreeting.followUp, () => {
-                    console.log('Second speech finished, returning to idle.');
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
-                    isGreeting = false;
-                });
-            });
+            const onWaveFinished = (event) => {
+                if (event.action.getClip().name === animationNames.wave) {
+                    mixer.removeEventListener('finished', onWaveFinished);
+                    playAction(animationNames.talk, THREE.LoopRepeat);
+                    speakText(randomGreeting.initial, () => {
+                        speakText(randomGreeting.followUp, () => {
+                            playAction(animationNames.idle2, THREE.LoopRepeat);
+                            isGreeting = false;
+                            resetIdleSequence();
+                        });
+                    });
+                }
+            };
+            mixer.addEventListener('finished', onWaveFinished);
         }
 
         function initSpeechRecognition() {
@@ -372,9 +375,8 @@
                     avatar.position.set(0, 0, 0);
                     faceCamera();
 
-                    // Play the talk animation while speaking "Go ahead, I'm listening."
+                    playAction(animationNames.talk, THREE.LoopRepeat);
                     speakText("Go ahead, I'm listening.", () => {
-                         // After speaking, play the listening animation and start the recognition
                          playAction(animationNames.listening, THREE.LoopRepeat);
                          if (speechRecognition) {
                              speechRecognition.start();
@@ -439,9 +441,6 @@
         
         function handleAvatarInteraction() {
             console.log('handleAvatarInteraction called.');
-            reactToInteraction();
-            avatar.position.set(0, 0, 0);
-            faceCamera();
             startGreetingSequence();
         }
 
@@ -526,14 +525,6 @@
             }
         }
         
-        function onChatInputFocus() {
-            if (isGreeting) return;
-            reactToInteraction();
-            avatar.position.set(0, 0, 0);
-            faceCamera();
-            startGreetingSequence();
-        }
-
         function onSendMessage() {
             console.log('Send button clicked. Starting message process.');
             const message = chatInput.value.trim();
@@ -642,6 +633,7 @@
                             playAction(animationNames.point);
                         }
 
+                        playAction(animationNames.talk, THREE.LoopRepeat);
                         speakText(responseText);
                     } else {
                         console.error("Unexpected API response structure.");
@@ -686,13 +678,6 @@
                     console.warn("Male voice not found. Using default voice.");
                 }
 
-                utterance.onstart = () => {
-                     console.log("Speech started. Playing talk animation.");
-                     if (!isGreeting && currentAction && currentAction.getClip().name !== animationNames.wave) {
-                         playAction(animationNames.talk, THREE.LoopRepeat);
-                     }
-                };
-
                 utterance.onend = () => {
                     console.log("Speech finished. Calling onEndCallback.");
                     if (onEndCallback) {
@@ -727,7 +712,7 @@
         }
 
         function onMouseMove(event) {
-            if (isGreeting) return; // Ignore mouse movements during greeting
+            if (isGreeting) return;
             lastMouseMovementTime = Date.now();
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -742,7 +727,6 @@
         function resetIdleSequence() {
             lastInteractionTime = Date.now();
             isMoving = false;
-            isTurning = false;
         }
 
         function animate() {
@@ -756,10 +740,10 @@
             
             const delta = clock.getDelta();
 
-            const timeSinceLastMouseMovement = Date.now() - lastMouseMovementTime;
-            if (!isGreeting && timeSinceLastMouseMovement > MOUSE_IDLE_TIMEOUT && currentAction && currentAction.getClip().name === animationNames.idle2) {
+            const timeSinceLastInteraction = Date.now() - lastInteractionTime;
+            
+            if (!isGreeting && timeSinceLastInteraction > IDLE_TIMEOUT_10 && currentAction && currentAction.getClip().name === animationNames.idle2) {
                  playAction(animationNames.idle, THREE.LoopRepeat);
-                 lastInteractionTime = Date.now();
             }
 
             if (!isGreeting && currentAction && currentAction.getClip().name === animationNames.idle2 && leftEye && rightEye && headBone) {
@@ -792,8 +776,6 @@
                 jawBone.rotation.x = 0;
             }
             
-            checkIdlePatrolSequence();
-
             if (isMoving) {
                 const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
 
@@ -807,32 +789,18 @@
                         }
                     } else {
                         const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
-                        avatar.position.addScaledVector(direction, patrolSpeed);
+                        avatar.position.addScaledVector(direction, 0.008);
                     }
                 } else {
                     avatar.position.copy(avatar.userData.targetPosition);
                     isMoving = false;
-                    isPatrolling = false;
-                    playAction(animationNames.idle, THREE.LoopRepeat);
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
                     lastInteractionTime = Date.now();
                 }
             }
             
             if (mixer) mixer.update(delta);
             renderer.render(scene, camera);
-        }
-
-        function checkIdlePatrolSequence() {
-             if (!isMoving && !isPatrolling && !isGreeting && currentAction && currentAction.getClip().name === animationNames.idle) {
-                const elapsedTimeSinceIdle = Date.now() - lastInteractionTime;
-                if (elapsedTimeSinceIdle > IDLE_TIMEOUT_30) {
-                    console.log('Idle timeout triggered. Starting new patrol.');
-                    patrolDirection *= -1; 
-                    const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
-                    isPatrolling = true;
-                    setNewTarget(newPatrolPosition);
-                 }
-            }
         }
     </script>
 </body>
