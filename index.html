@@ -317,10 +317,10 @@
                     actions[clip.name] = action;
                 });
                 
+                setupMusic(); // Setup the music after the model is loaded
                 startGreetingSequence();
                 
                 faceCamera();
-                setupMusic(); // Setup the music after the model is loaded
 
                 setTimeout(() => {
                     loadingScreen.style.opacity = '0';
@@ -379,8 +379,8 @@
                 playAction(animationNames.talk, THREE.LoopRepeat);
                 speakText(randomGreeting.followUp, () => {
                     console.log('Second speech finished, returning to idle.');
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
                     isGreeting = false;
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
                 });
             });
         }
@@ -736,7 +736,7 @@
                     console.log("Speech finished. Calling onEndCallback.");
                     if (onEndCallback) {
                         onEndCallback();
-                    } else {
+                    } else if (!isGreeting) { // Only play idle if not in greeting sequence
                         playAction(animationNames.idle2, THREE.LoopRepeat);
                     }
                     resetIdleSequence();
@@ -766,6 +766,7 @@
         }
 
         function onMouseMove(event) {
+            const timeSinceLastMouseMovement = Date.now() - lastMouseMovementTime;
             lastMouseMovementTime = Date.now();
             if (timeSinceLastMouseMovement > MOUSE_IDLE_TIMEOUT && currentAction && currentAction.getClip().name === animationNames.idle2) {
                  playAction(animationNames.idle, THREE.LoopRepeat);
