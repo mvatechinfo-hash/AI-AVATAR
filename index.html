@@ -163,9 +163,8 @@
         let currentAction;
         const actions = {};
 
-        let patrolDirection = 1;
         const patrolSpeed = 0.008;
-        const patrolLimit = 1.5;
+        const patrolRadius = 2.5;
         let isMoving = false;
         let isTurning = false;
         let isPatrolling = false;
@@ -176,7 +175,10 @@
         let lastInteractionTime = Date.now();
         const IDLE_TIMEOUT_30 = 30 * 1000;
         let lastMouseMovementTime = Date.now();
-        const MOUSE_IDLE_TIMEOUT = 5000;
+        const MOUSE_IDLE_TIMEOUT = 10000; // Adjusted from 5s to 10s
+        
+        let danceAction;
+        let isPlayingDance = false;
 
         const chatInput = document.getElementById('chat-input');
         const sendButton = document.getElementById('send-button');
@@ -317,6 +319,22 @@
                     actions[clip.name] = action;
                 });
                 
+                // Get the dance action to set its loop behavior later
+                danceAction = actions[animationNames.dance];
+                if (danceAction) {
+                    danceAction.setLoop(THREE.LoopOnce); // Set dance animation to play only once
+                    mixer.addEventListener('finished', (e) => {
+                        if (e.action === danceAction) {
+                            console.log("Dance animation finished. Stopping music and returning to idle.");
+                            stopMusic();
+                            isPlayingDance = false;
+                            playAction(animationNames.idle2, THREE.LoopRepeat);
+                        }
+                    });
+                } else {
+                    console.warn("Dance animation not found in GLB file.");
+                }
+                
                 setupMusic(); // Setup the music after the model is loaded
                 startGreetingSequence();
                 
@@ -449,11 +467,13 @@
         }
 
         function onDanceButtonClick() {
-            if (!avatar) return;
+            if (!avatar || isPlayingDance) return;
             reactToInteraction();
             avatar.position.set(0, 0, 0);
             faceCamera();
-            playAction(animationNames.dance, THREE.LoopRepeat);
+            isPlayingDance = true;
+            playAction(animationNames.dance); // Play dance, it is already set to LoopOnce
+            startMusic();
         }
 
         function reactToInteraction() {
@@ -530,8 +550,10 @@
             const prevActionName = currentAction ? currentAction.getClip().name : '';
             if (name === animationNames.dance && prevActionName !== animationNames.dance) {
                 startMusic();
+                isPlayingDance = true;
             } else if (name !== animationNames.dance && prevActionName === animationNames.dance) {
                 stopMusic();
+                isPlayingDance = false;
             }
             // --- End of Music Control Logic ---
 
@@ -604,7 +626,9 @@
 
         async function generateResponseFromAPI(userPrompt) {
             if (userPrompt.toLowerCase().trim() === 'dance') {
-                playAction(animationNames.dance, THREE.LoopRepeat);
+                if(!isPlayingDance) {
+                    onDanceButtonClick();
+                }
                 return;
             }
 
@@ -670,7 +694,9 @@
 
                         const lowerCaseText = responseText.toLowerCase();
                         if (lowerCaseText.includes('dance')) {
-                            playAction(animationNames.dance, THREE.LoopRepeat);
+                           if(!isPlayingDance) {
+                               onDanceButtonClick();
+                           }
                         } else if (lowerCaseText.includes('happy') || lowerCaseText.includes('awesome')) {
                             playAction(animationNames.happy);
                         } else if (lowerCaseText.includes('yes') || lowerCaseText.includes('correct')) {
@@ -679,9 +705,10 @@
                             playAction(animationNames.shake);
                         } else if (lowerCaseText.includes('important') || lowerCaseText.includes('note')) {
                             playAction(animationNames.point);
+                        } else {
+                            speakText(responseText);
                         }
 
-                        speakText(responseText);
                     } else {
                         console.error("Unexpected API response structure.");
                         playAction(animationNames.shake);
@@ -727,7 +754,7 @@
 
                 utterance.onstart = () => {
                      console.log("Speech started. Playing talk animation.");
-                     if (!isGreeting && currentAction && currentAction.getClip().name !== animationNames.wave) {
+                     if (!isGreeting && currentAction && currentAction.getClip().name !== animationNames.wave && currentAction.getClip().name !== animationNames.dance) {
                          playAction(animationNames.talk, THREE.LoopRepeat);
                      }
                 };
@@ -786,6 +813,14 @@
             lastInteractionTime = Date.now();
             isMoving = false;
             isTurning = false;
+        }
+        
+        function generateRandomPatrolPosition() {
+             const angle = Math.random() * Math.PI * 2;
+             const radius = Math.random() * patrolRadius;
+             const x = Math.cos(angle) * radius;
+             const z = Math.sin(angle) * radius;
+             return new THREE.Vector3(x, 0, z);
         }
 
         function animate() {
@@ -872,10 +907,8 @@
                 const elapsedTimeSinceIdle = Date.now() - lastInteractionTime;
                 if (elapsedTimeSinceIdle > IDLE_TIMEOUT_30 && currentAction && currentAction.getClip().name === animationNames.idle) {
                     console.log('Idle timeout triggered. Starting new patrol.');
-                    patrolDirection *= -1; 
-                    const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
                     isPatrolling = true;
-                    setNewTarget(newPatrolPosition);
+                    setNewTarget(generateRandomPatrolPosition());
                  }
             }
         }
