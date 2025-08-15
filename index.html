@@ -215,6 +215,7 @@
         let danceMusic;
         let raycaster = new THREE.Raycaster();
         let mouse = new THREE.Vector2();
+        let mouseLookTarget = new THREE.Vector3();
 
         // State for API calls and UI
         let isFetchingResponse = false;
@@ -318,15 +319,19 @@
             activeAction.clampWhenFinished = clampWhenFinished;
         }
 
-        // Mouse move for camera look
+        // Mouse move for mouse-look
         window.addEventListener('mousemove', (event) => {
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             
             // This is a simple look-at implementation. A more advanced one would involve moving the head/eyes bone.
-            // For now, let's just make the camera slightly reactive to the mouse.
-            camera.position.x = 2.5 * mouse.x * 0.1;
-            camera.position.y = 1.5 + mouse.y * 0.1;
+            // For now, let's just make the avatar's body slightly reactive to the mouse.
+            if (avatar) {
+                mouseLookTarget.x = camera.position.x + mouse.x * 2;
+                mouseLookTarget.y = avatar.position.y + 1.2; // roughly head height
+                mouseLookTarget.z = camera.position.z + mouse.y * 2;
+                avatar.lookAt(mouseLookTarget);
+            }
         });
 
         // Function to check for idle state
@@ -361,11 +366,11 @@
             moveAvatarToPoint(patrolTarget);
             setTimeout(patrolAvatar, 10000); // Move again after 10 seconds
         }
-
+        
+        // This function is for animated movements (like patrol)
         function moveAvatarToPoint(targetPosition) {
-            if (!avatar || isMoving || isPatrolling) {
-                // If patrolling, we allow the movement to start. Otherwise, we block it.
-                if (!isPatrolling) return;
+            if (!avatar || isMoving) {
+                 return;
             }
             
             const direction = new THREE.Vector3().subVectors(targetPosition, avatar.position);
@@ -380,20 +385,32 @@
             resetIdleTimer();
         }
 
+        // New function to instantly move the avatar to the front and make it face the camera
+        function teleportToFront() {
+            if (!avatar) return;
+            // Define the front-facing position relative to the camera
+            const frontPosition = new THREE.Vector3(0, avatar.position.y, 1.5);
+            avatar.position.copy(frontPosition);
+
+            // Set the rotation to face the camera instantly
+            const direction = new THREE.Vector3().subVectors(camera.position, frontPosition);
+            const angle = Math.atan2(direction.x, direction.z);
+            avatar.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+
+            // Stop any ongoing movements
+            isMoving = false;
+            isTurning = false;
+            
+            resetIdleTimer();
+        }
+        
         // Function to reset the idle timer
         function resetIdleTimer() {
             lastInteractionTime = Date.now();
             isPatrolling = false;
-            if (activeAction.getClip().name !== animationNames.idle_active) {
+            if (activeAction && activeAction.getClip().name !== animationNames.idle_active) {
                 playAction(animationNames.idle_active, THREE.LoopRepeat);
             }
-        }
-
-        // Function to make the avatar face forward and appear in front
-        function faceForward() {
-            controls.reset(); // Reset camera position
-            avatar.rotation.y = Math.PI; // Face the camera
-            resetIdleTimer();
         }
         
         // Function to append messages to the chat UI
@@ -625,7 +642,7 @@
                     appendMessage('avatar', "Go ahead, I'm listening.");
                     showToast("Listening...", "info");
                     isTalking = true;
-                    faceForward();
+                    teleportToFront();
                 };
 
                 speechRecognizer.onresult = (event) => {
@@ -670,7 +687,7 @@
             isDanceMode = true;
             
             // Make the avatar face forward
-            faceForward();
+            teleportToFront();
 
             // Play dance animation
             playAction(animationNames.dance, THREE.LoopOnce);
@@ -706,6 +723,7 @@
 
         // --- Initial Greeting ---
         async function greetAvatar() {
+            teleportToFront(); // Teleport to front and face the user on greeting
             playAction(animationNames.wave, THREE.LoopOnce);
             isTalking = true;
             await getTTS("Hello there!");
@@ -721,8 +739,7 @@
                 appendMessage('user', message);
                 userInput.value = '';
                 getAvatarResponse(message);
-                resetIdleTimer();
-                faceForward();
+                teleportToFront(); // Instant teleport
             }
         });
 
@@ -739,8 +756,7 @@
             } else {
                 startRecording();
             }
-            resetIdleTimer();
-            faceForward();
+            teleportToFront(); // Instant teleport
         });
 
         // Toggle dance mode
@@ -754,10 +770,10 @@
 
         // Handle clicks on the canvas for movement and avatar interaction
         renderer.domElement.addEventListener('click', (event) => {
-            resetIdleTimer();
-            faceForward();
+            // First, teleport to the front.
+            teleportToFront();
 
-            // Check if the click was on the avatar
+            // Then, check if the click was on the avatar.
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObject(avatar, true);
             if (intersects.length > 0) {
@@ -766,11 +782,16 @@
                 return;
             }
 
-            // Otherwise, move the avatar to the clicked point on the ground
+            // Otherwise, move the avatar to the clicked point on the ground (this will be an animated movement)
             const groundIntersects = raycaster.intersectObject(scene.children.find(o => o.geometry.type === 'PlaneGeometry'));
             if (groundIntersects.length > 0) {
                 moveAvatarToPoint(groundIntersects[0].point);
             }
+        });
+        
+        // Handle clicks on the chat UI container
+        chatUIContainer.addEventListener('click', () => {
+            teleportToFront(); // Instant teleport
         });
 
         // Start the animation loop
@@ -790,27 +811,30 @@
                 jawBone.rotation.x = 0;
             }
             
-            // Movement logic
-            if (isMoving) {
-                const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
-
-                if (distance > 0.05) {
-                    if (isTurning) {
-                        const elapsedTime = Date.now() - turnStartTime;
-                        const turnProgress = Math.min(elapsedTime / turnDuration, 1);
-                        avatar.quaternion.slerp(targetQuaternion, turnProgress);
-                        if (turnProgress >= 1) {
-                            isTurning = false;
-                        }
-                    } else {
-                        const direction = new THREE.Vector3().subVectors(avatar.userData.targetPosition, avatar.position).normalize();
-                        avatar.position.addScaledVector(direction, 0.008);
+            // Movement and turning logic
+            if (isMoving || isTurning) {
+                // Slerp for turning animation
+                if (isTurning) {
+                    const elapsedTime = Date.now() - turnStartTime;
+                    const turnProgress = Math.min(elapsedTime / turnDuration, 1);
+                    avatar.quaternion.slerp(targetQuaternion, turnProgress);
+                    if (turnProgress >= 1) {
+                        isTurning = false;
                     }
-                } else {
-                    avatar.position.copy(avatar.userData.targetPosition);
-                    isMoving = false;
-                    playAction(animationNames.idle_active, THREE.LoopRepeat);
-                    lastInteractionTime = Date.now();
+                }
+
+                // If not turning, or if turning is finished, handle movement
+                if (!isTurning && isMoving) {
+                    const distance = avatar.position.distanceTo(patrolTarget);
+                    if (distance > 0.05) {
+                        const direction = new THREE.Vector3().subVectors(patrolTarget, avatar.position).normalize();
+                        avatar.position.addScaledVector(direction, 0.008);
+                    } else {
+                        avatar.position.copy(patrolTarget);
+                        isMoving = false;
+                        playAction(animationNames.idle_active, THREE.LoopRepeat);
+                        lastInteractionTime = Date.now();
+                    }
                 }
             }
             
