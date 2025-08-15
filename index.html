@@ -707,7 +707,8 @@
                 if (synth.speaking) {
                     synth.cancel();
                 }
-                const sanitizedText = text.replace(/\*\s/g, ''); 
+                // Using a regular expression to remove any instance of one or more asterisks.
+                const sanitizedText = text.replace(/\*+/g, '');
                 
                 const utterance = new SpeechSynthesisUtterance(sanitizedText);
                 utterance.pitch = 1;
