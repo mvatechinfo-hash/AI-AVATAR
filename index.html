@@ -8,7 +8,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
-
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
         body {
@@ -162,9 +161,13 @@
 
         let currentAction;
         const actions = {};
+        
+        let danceAction;
+        let isPlayingDance = false;
 
+        let patrolDirection = 1;
         const patrolSpeed = 0.008;
-        const patrolRadius = 2.5;
+        const patrolLimit = 1.5;
         let isMoving = false;
         let isTurning = false;
         let isPatrolling = false;
@@ -175,10 +178,7 @@
         let lastInteractionTime = Date.now();
         const IDLE_TIMEOUT_30 = 30 * 1000;
         let lastMouseMovementTime = Date.now();
-        const MOUSE_IDLE_TIMEOUT = 10000; // Adjusted from 5s to 10s
-        
-        let danceAction;
-        let isPlayingDance = false;
+        const MOUSE_IDLE_TIMEOUT = 5000;
 
         const chatInput = document.getElementById('chat-input');
         const sendButton = document.getElementById('send-button');
@@ -194,18 +194,15 @@
         let speechRecognition;
         let isListening = false;
         let isGreeting = false;
-        
+        let isVoiceListReady = false;
+
         // --- Music variables and setup using Tone.js ---
-        // Variable to hold the dance music loop
         let danceLoop;
 
-        // Function to play dance music
         async function playDanceMusic() {
-            // Start the audio context
             await Tone.start();
             console.log("Audio context started. Playing dance music.");
 
-            // Create synths for the drums and bass
             const drum = new Tone.MembraneSynth().toDestination();
             const bass = new Tone.Synth({
                 oscillator: { type: "square" },
@@ -217,7 +214,6 @@
                 }
             }).toDestination();
             
-            // Define the sequence for the dance beat
             danceLoop = new Tone.Sequence((time, note) => {
                 if (note === 'C1') {
                     drum.triggerAttackRelease(note, "8n", time);
@@ -226,15 +222,13 @@
                 }
             }, ['C1', null, 'C1', null, null, 'C1', null, null, 'C1', null, 'C1', null, null, 'C1', null, 'C1']).start(0);
 
-            // Start the Tone.js transport to begin playback
             Tone.Transport.start();
         }
 
-        // Function to stop the dance music
         function stopDanceMusic() {
             if (danceLoop) {
                 danceLoop.stop();
-                danceLoop.dispose(); // Clean up the loop
+                danceLoop.dispose();
                 danceLoop = null;
             }
             if (Tone.Transport.state === 'started') {
@@ -243,6 +237,7 @@
             console.log("Dance music stopped.");
         }
         // --- End of music variables and setup ---
+
 
         init();
         animate();
@@ -294,14 +289,13 @@
                     actions[clip.name] = action;
                 });
                 
-                // Set dance animation to play only once and add listener to stop music when it finishes
                 danceAction = actions[animationNames.dance];
                 if (danceAction) {
                     danceAction.setLoop(THREE.LoopOnce); 
                     mixer.addEventListener('finished', (e) => {
                         if (e.action === danceAction) {
                             console.log("Dance animation finished. Stopping music and returning to idle.");
-                            stopDanceMusic(); // Use the user-provided function
+                            stopDanceMusic();
                             isPlayingDance = false;
                             playAction(animationNames.idle2, THREE.LoopRepeat);
                         }
@@ -309,7 +303,7 @@
                 } else {
                     console.warn("Dance animation not found in GLB file.");
                 }
-                
+
                 startGreetingSequence();
                 
                 faceCamera();
@@ -351,6 +345,16 @@
             
             danceButton.addEventListener('click', onDanceButtonClick);
             initSpeechRecognition();
+            initSpeechSynthesis();
+        }
+
+        function initSpeechSynthesis() {
+            if ('speechSynthesis' in window) {
+                synth.onvoiceschanged = () => {
+                    isVoiceListReady = true;
+                    console.log('Speech synthesis voices are ready.');
+                };
+            }
         }
         
         function startGreetingSequence() {
@@ -371,8 +375,8 @@
                 playAction(animationNames.talk, THREE.LoopRepeat);
                 speakText(randomGreeting.followUp, () => {
                     console.log('Second speech finished, returning to idle.');
-                    isGreeting = false;
                     playAction(animationNames.idle2, THREE.LoopRepeat);
+                    isGreeting = false;
                 });
             });
         }
@@ -420,15 +424,34 @@
             }
         }
         
-        // onDanceButtonClick now uses the new music functions
+        function toggleSpeechRecognition() {
+            console.log('Microphone button clicked. isListening:', isListening);
+            if (speechRecognition) {
+                if (isListening) {
+                    speechRecognition.stop();
+                } else {
+                    reactToInteraction();
+                    avatar.position.set(0, 0, 0);
+                    faceCamera();
+
+                    playAction(animationNames.listening, THREE.LoopRepeat);
+                    speakText("Go ahead, I'm listening.", () => {
+                         if (speechRecognition) {
+                             speechRecognition.start();
+                         }
+                    });
+                }
+            }
+        }
+
         function onDanceButtonClick() {
             if (!avatar || isPlayingDance) return;
             reactToInteraction();
             avatar.position.set(0, 0, 0);
             faceCamera();
             isPlayingDance = true;
-            playAction(animationNames.dance); // Play dance, it is already set to LoopOnce
-            playDanceMusic(); // Call the user-provided music function
+            playAction(animationNames.dance);
+            playDanceMusic();
         }
 
         function reactToInteraction() {
@@ -575,7 +598,7 @@
                 }
                 return;
             }
-
+            
             const apiKey = "";
             if (!apiKey) {
                 console.error("API key is missing. Please add your API key to the code.");
@@ -649,10 +672,8 @@
                             playAction(animationNames.shake);
                         } else if (lowerCaseText.includes('important') || lowerCaseText.includes('note')) {
                             playAction(animationNames.point);
-                        } else {
-                            speakText(responseText);
                         }
-
+                        speakText(responseText);
                     } else {
                         console.error("Unexpected API response structure.");
                         playAction(animationNames.shake);
@@ -676,6 +697,9 @@
         
         function speakText(text, onEndCallback = null) {
             console.log("Speaking: ", text);
+            if (!isVoiceListReady) {
+                console.warn("Voice list not ready. Skipping specific voice selection.");
+            }
             if ('speechSynthesis' in window) {
                 if (synth.speaking) {
                     synth.cancel();
@@ -686,14 +710,16 @@
                 utterance.rate = 1;
                 utterance.volume = 1;
 
-                const voices = synth.getVoices();
-                const maleVoice = voices.find(v => v.name.includes("Male") && v.lang.includes("en"));
-                
-                if (maleVoice) {
-                    utterance.voice = maleVoice;
-                    console.log(`Using male voice: ${maleVoice.name}`);
-                } else {
-                    console.warn("Male voice not found. Using default voice.");
+                if (isVoiceListReady) {
+                    const voices = synth.getVoices();
+                    const maleVoice = voices.find(v => v.name.includes("Male") && v.lang.includes("en"));
+                    
+                    if (maleVoice) {
+                        utterance.voice = maleVoice;
+                        console.log(`Using male voice: ${maleVoice.name}`);
+                    } else {
+                        console.warn("Male voice not found. Using default voice.");
+                    }
                 }
 
                 utterance.onstart = () => {
@@ -707,7 +733,7 @@
                     console.log("Speech finished. Calling onEndCallback.");
                     if (onEndCallback) {
                         onEndCallback();
-                    } else if (!isGreeting) { // Only play idle if not in greeting sequence
+                    } else if (!isGreeting) {
                         playAction(animationNames.idle2, THREE.LoopRepeat);
                     }
                     resetIdleSequence();
@@ -737,9 +763,8 @@
         }
 
         function onMouseMove(event) {
-            const timeSinceLastMouseMovement = Date.now() - lastMouseMovementTime;
             lastMouseMovementTime = Date.now();
-            if (timeSinceLastMouseMovement > MOUSE_IDLE_TIMEOUT && currentAction && currentAction.getClip().name === animationNames.idle2) {
+            if (lastMouseMovementTime - Date.now() > MOUSE_IDLE_TIMEOUT && currentAction && currentAction.getClip().name === animationNames.idle2) {
                  playAction(animationNames.idle, THREE.LoopRepeat);
                  lastInteractionTime = Date.now();
             }
@@ -757,14 +782,6 @@
             lastInteractionTime = Date.now();
             isMoving = false;
             isTurning = false;
-        }
-        
-        function generateRandomPatrolPosition() {
-             const angle = Math.random() * Math.PI * 2;
-             const radius = Math.random() * patrolRadius;
-             const x = Math.cos(angle) * radius;
-             const z = Math.sin(angle) * radius;
-             return new THREE.Vector3(x, 0, z);
         }
 
         function animate() {
@@ -851,8 +868,10 @@
                 const elapsedTimeSinceIdle = Date.now() - lastInteractionTime;
                 if (elapsedTimeSinceIdle > IDLE_TIMEOUT_30 && currentAction && currentAction.getClip().name === animationNames.idle) {
                     console.log('Idle timeout triggered. Starting new patrol.');
+                    patrolDirection *= -1; 
+                    const newPatrolPosition = new THREE.Vector3(patrolLimit * patrolDirection, 0, 0);
                     isPatrolling = true;
-                    setNewTarget(generateRandomPatrolPosition());
+                    setNewTarget(newPatrolPosition);
                  }
             }
         }
