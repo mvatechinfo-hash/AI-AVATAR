@@ -1,14 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI-AVATAR</title>
 
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Font: Inter -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap">
+    <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js - This was the missing library! -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- GLTFLoader.js for loading 3D models -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- Tone.js for audio -->
+    <script src="https://cdn.jsdelivr.net/npm/tone@14.7.58/build/Tone.min.js"></script>
+    
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        /* General body styling for a dark theme and centered content */
         body {
             font-family: 'Inter', sans-serif;
             margin: 0;
@@ -17,37 +29,18 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
+            height: 100vh;
         }
+
+        /* Styling for the canvas element */
         canvas {
             display: block;
             touch-action: none;
-            width: 100vw;
-            height: 100vh;
+            width: 100% !important;
+            height: 100% !important;
         }
-        .loading-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #1f2937;
-            color: white;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
-            transition: opacity 0.5s ease-in-out;
-        }
-        .loading-spinner {
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            border-top: 4px solid #3B82F6;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-        }
+
+        /* Main container for the chat UI, positioned on the right */
         .chat-ui-container {
             position: absolute;
             bottom: 20px;
@@ -59,532 +52,479 @@
             z-index: 10;
             display: flex;
             flex-direction: column;
-            background-color: rgba(31, 41, 55, 0.8);
+            background-color: rgba(17, 24, 39, 0.8);
             backdrop-filter: blur(10px);
             border-radius: 1rem;
-            border: 1px solid rgba(55, 65, 81, 0.5);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease-in-out;
         }
-        .chat-messages {
-            flex-grow: 1;
-            overflow-y: auto;
-            margin-bottom: 1rem;
-            padding-right: 0.5rem;
+
+        /* A hideable container for the audio start button */
+        .audio-start-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 20;
+            transition: opacity 0.5s ease;
         }
-        .chat-messages::-webkit-scrollbar {
-            width: 8px;
-        }
-        .chat-messages::-webkit-scrollbar-track {
-            background: rgba(55, 65, 81, 0.5);
-            border-radius: 10px;
-        }
-        .chat-messages::-webkit-scrollbar-thumb {
-            background-color: #4B5563;
-            border-radius: 10px;
-            border: 2px solid rgba(31, 41, 55, 0.5);
-        }
+
+        /* Styling for the message bubble */
         .message-bubble {
-            margin-bottom: 0.5rem;
-            padding: 0.75rem;
+            max-width: 80%;
+            padding: 0.5rem 0.75rem;
             border-radius: 1rem;
-            max-width: 90%;
+            margin-bottom: 0.5rem;
             word-wrap: break-word;
         }
+
         .user-message {
             background-color: #3B82F6;
             color: white;
             align-self: flex-end;
-            margin-left: auto;
+            border-bottom-right-radius: 0;
         }
+
         .ai-message {
             background-color: #4B5563;
             color: white;
             align-self: flex-start;
-            margin-right: auto;
+            border-bottom-left-radius: 0;
         }
-        .loader {
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            border-top: 4px solid #fff;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
+
+        /* Animations for messages fading in */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+
+        .message-bubble {
+            animation: fadeIn 0.5s ease-out;
         }
-        #micButton.active {
-            animation: pulse 1s infinite;
-            background-color: #EF4444;
+
+        .message-stream {
+            overflow-y: auto;
+            flex-grow: 1;
+            padding-right: 1rem;
+            margin-bottom: 1rem;
         }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+
+        .message-stream::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .message-stream::-webkit-scrollbar-track {
+            background: #4B5563;
+            border-radius: 10px;
+        }
+
+        .message-stream::-webkit-scrollbar-thumb {
+            background-color: #6B7280;
+            border-radius: 10px;
+            border: 2px solid #4B5563;
+        }
+
+        /* Hide the container when it's off-screen */
+        .chat-ui-container.hidden {
+            transform: translateX(100%);
+            opacity: 0;
         }
     </style>
-    <!-- Three.js and GLTFLoader for 3D rendering and model loading -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
-    <!-- Tone.js for web audio functionality -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 </head>
-<body class="bg-gray-900 text-white">
 
-    <!-- Loading Screen -->
-    <div id="loadingScreen" class="loading-screen">
-        <div class="loading-spinner"></div>
-        <p class="mt-4 text-lg">Loading 3D Model... <span id="loadingProgress">0</span>%</p>
+<body class="bg-gray-900 text-gray-100">
+    <canvas id="c"></canvas>
+
+    <!-- Start button container -->
+    <div id="audioStartContainer" class="audio-start-container">
+        <button id="audioStartButton"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105">
+            Start Experience
+        </button>
     </div>
 
-    <!-- 3D Canvas -->
-    <canvas id="avatarCanvas"></canvas>
-
-    <!-- Chat UI Container -->
-    <div id="chat-ui-container" class="chat-ui-container shadow-2xl">
-        <div id="chatMessages" class="chat-messages flex flex-col space-y-2">
-            <!-- Messages will be appended here -->
+    <!-- Main Chat UI Container -->
+    <div id="chatUiContainer" class="chat-ui-container flex flex-col p-4 space-y-4 rounded-3xl shadow-2xl hidden">
+        <div class="flex items-center justify-between text-white pb-2 border-b border-gray-700">
+            <h1 class="text-xl font-bold">AI Avatar Chat</h1>
+            <div class="flex items-center space-x-2">
+                <span id="listeningIndicator" class="text-gray-400 text-sm"></span>
+                <button id="toggleChatButton"
+                    class="p-2 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition duration-200">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
         </div>
-        <div class="flex items-center space-x-2 p-2 bg-gray-700 rounded-xl border border-gray-600">
-            <input id="chatInput" type="text" placeholder="Type a message..." class="flex-grow bg-transparent text-white focus:outline-none placeholder-gray-400 px-2">
-            <button id="micButton" class="w-10 h-10 rounded-full bg-red-500 text-white flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg">
-                <i class="fas fa-microphone"></i>
+
+        <!-- Message history stream -->
+        <div id="messageStream" class="message-stream flex flex-col space-y-2 flex-grow overflow-y-auto pr-2">
+        </div>
+
+        <!-- Input area -->
+        <div class="flex items-center space-x-3 pt-4 border-t border-gray-700">
+            <input type="text" id="userInput" placeholder="Ask me something..."
+                class="flex-grow p-3 bg-gray-700 text-white rounded-full outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200" />
+            <button id="sendButton"
+                class="p-3 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                disabled>
+                <i class="fa-solid fa-paper-plane"></i>
             </button>
-            <button id="danceButton" class="w-10 h-10 rounded-full bg-purple-500 text-white flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg">
-                <i class="fas fa-music"></i>
-            </button>
-            <button id="sendButton" class="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg">
-                <i class="fas fa-paper-plane"></i>
+            <button id="micButton"
+                class="p-3 bg-red-600 text-white rounded-full shadow-lg hover:bg-red-700 transition duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed">
+                <i class="fa-solid fa-microphone"></i>
             </button>
         </div>
     </div>
 
-    <script>
-        // The API key is left as an empty string. The Canvas environment will automatically provide it during runtime.
-        const apiKey = "";
-        
-        let scene, camera, renderer, mixer, avatar, jawBone, headBone, currentAction;
-        let actions = {};
-        let isSpeaking = false;
-        let isMoving = false;
-        let isPatrolling = false;
-        let isListening = false;
-        let isThinking = false;
-        let isGreeting = false;
-        
+    <script type="module">
+        // Import necessary libraries for Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables and constants
+        let scene, camera, renderer, avatar, mixer, skeleton;
+        let animations = {};
+        let activeAction;
         let lastInteractionTime = Date.now();
-        let lastPatrolTime = Date.now();
-        
-        const idleTimeout = 10000; // 10 seconds to transition to passive idle
-        const patrolTimeout = 30000; // 30 seconds total to start patrol
-        const patrolWaitTime = 10000; // 10 seconds wait at each patrol point
-        
-        const clock = new THREE.Clock();
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-        
-        let danceLoop;
+        const IDLE_TIMEOUT = 10000; // 10 seconds
+        let isSpeaking = false;
+        let jawBone;
+        let isMoving = false;
+        let isTurning = false;
+        let turnStartTime = 0;
+        const turnDuration = 1000; // 1 second for turning
 
-        // Animation names from the provided model
-        const animationNames = {
-            idle: 'idle',
-            idle2: 'idle2',
-            wave: 'wave',
-            talk: 'talk',
-            listening: 'listen',
-            thinking: 'think',
-            shake: 'shake',
-            walk: 'walk',
-            dance: 'dance',
-        };
-        
-        const greetings = [
-            { initial: "Hello there!", followUp: "What can I do for you?" },
-            { initial: "Hi!", followUp: "How can I help?" },
-            { initial: "Hey!", followUp: "Nice to see you!" },
-            { initial: "Greetings!", followUp: "Feel free to ask me anything." }
-        ];
+        // Firebase-related variables
+        let db, auth, userId;
+        const app = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        const chatMessages = document.getElementById('chatMessages');
-        const chatInput = document.getElementById('chatInput');
-        const sendButton = document.getElementById('sendButton');
-        const micButton = document.getElementById('micButton');
-        const danceButton = document.getElementById('danceButton');
-        const loadingScreen = document.getElementById('loadingScreen');
-        const loadingProgress = document.getElementById('loadingProgress');
-        const chatUiContainer = document.getElementById('chat-ui-container');
+        // Ensure firebase config is available before proceeding
+        if (Object.keys(firebaseConfig).length === 0) {
+            console.error("Firebase config is not defined.");
+        } else {
+            // Initialize Firebase services
+            const firebaseApp = initializeApp(firebaseConfig);
+            db = getFirestore(firebaseApp);
+            auth = getAuth(firebaseApp);
 
-        // Initial setup for the 3D scene and avatar
-        init();
-        animate();
-
-        function init() {
-            // Scene
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x111827);
-
-            // Camera
-            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(0, 1.6, 2.5);
-            camera.lookAt(0, 1.4, 0);
-
-            // Renderer
-            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('avatarCanvas'), antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.shadowMap.enabled = true;
-
-            // Lights
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-            scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
-            directionalLight.position.set(5, 5, 5);
-            directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 1024;
-            directionalLight.shadow.mapSize.height = 1024;
-            directionalLight.shadow.camera.near = 0.5;
-            directionalLight.shadow.camera.far = 50;
-            scene.add(directionalLight);
-
-            // Load the GLTF model and update loading screen
-            const loader = new THREE.GLTFLoader();
-            loader.load('./chatbot_avatar.glb', 
-                function(gltf) {
-                    avatar = gltf.scene;
-                    avatar.scale.set(0.7, 0.7, 0.7);
-                    avatar.position.y = 0;
-                    scene.add(avatar);
-                    
-                    // Find the jaw and head bones for animations
-                    avatar.traverse(o => {
-                        if (o.isMesh) {
-                            o.castShadow = true;
-                            o.receiveShadow = true;
+            // Set up authentication listener
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    console.log("User is authenticated:", userId);
+                    await initializeState();
+                } else {
+                    console.log("No user signed in. Signing in anonymously...");
+                    try {
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
                         }
-                        if (o.name === 'mixamorigHead') {
-                            headBone = o;
-                            jawBone = o.getObjectByName('mixamorigJaw');
-                        }
-                        if (o.name === 'HeadTop_End_end') {
-                            headBone = o;
-                        }
-                        if (o.name === 'Jaw') {
-                            jawBone = o;
-                        }
-                    });
-
-                    // Set up the animation mixer
-                    mixer = new THREE.AnimationMixer(avatar);
-                    gltf.animations.forEach(clip => {
-                        actions[clip.name] = mixer.clipAction(clip);
-                    });
-                    
-                    // Add the floor plane
-                    const planeGeometry = new THREE.PlaneGeometry(100, 100);
-                    const planeMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
-                    const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-                    plane.rotation.x = -Math.PI / 2;
-                    plane.position.y = -0.01;
-                    plane.receiveShadow = true;
-                    scene.add(plane);
-                    
-                    // Assign a name to the plane for raycasting
-                    plane.name = "groundPlane";
-                    avatar.name = "avatar";
-                    
-                    // After loading, hide the loading screen and start the greeting sequence
-                    loadingScreen.style.opacity = '0';
-                    setTimeout(() => { loadingScreen.style.display = 'none'; }, 500);
-
-                    // Initial greeting on load
-                    startGreetingSequence();
-                    
-                    // Add an event listener to handle the dance animation loop
-                    mixer.addEventListener('finished', (e) => {
-                        if (e.action.getClip().name === animationNames.dance) {
-                            stopDanceMusic();
-                            playAction(animationNames.idle2, THREE.LoopRepeat);
-                        }
-                    });
-            },
-            // onProgress callback
-            (xhr) => {
-                const progress = Math.round(xhr.loaded / xhr.total * 100);
-                loadingProgress.textContent = progress;
-            },
-            // onError callback
-            (error) => {
-                console.error("Error loading GLTF model", error);
-                loadingProgress.textContent = "Error";
-            });
-
-            // Event listeners
-            window.addEventListener('resize', onWindowResize, false);
-            document.getElementById('avatarCanvas').addEventListener('click', onCanvasClick, false);
-            document.getElementById('avatarCanvas').addEventListener('mousemove', onMouseMove, false);
-            chatUiContainer.addEventListener('click', reactToInteraction);
-        }
-
-        // --- Event Handlers ---
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-        
-        function onCanvasClick(event) {
-            reactToInteraction();
-            
-            // Calculate mouse position in normalized device coordinates
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
-            
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(scene.children, true);
-            
-            if (intersects.length > 0) {
-                const intersect = intersects[0];
-                let object = intersect.object;
-                while (object) {
-                    if (object.name === "avatar") {
-                        handleAvatarClick();
-                        return;
+                    } catch (error) {
+                        console.error("Error signing in:", error);
                     }
-                    object = object.parent;
                 }
-                if (intersect.object.name === "groundPlane") {
-                    handleGroundClick(intersect.point);
+            });
+        }
+        
+        async function initializeState() {
+            // Check for existing chat history
+            const userChatRef = doc(db, `artifacts/${app}/users/${userId}/chatHistory`, 'mainChat');
+            const docSnap = await getDoc(userChatRef);
+            if (docSnap.exists()) {
+                const chatHistory = docSnap.data().messages;
+                chatHistory.forEach(msg => {
+                    displayMessage(msg.role, msg.text);
+                });
+            } else {
+                // Initialize new chat history
+                await setDoc(userChatRef, { messages: [] });
+                // Add initial welcome message
+                displayMessage('assistant', "Hello! I'm your AI Avatar. Ask me anything to get started!");
+            }
+        }
+        
+        // This function saves a new message to the user's chat history in Firestore
+        async function saveMessage(role, text) {
+            if (!userId) {
+                console.error("User ID is not defined. Cannot save message.");
+                return;
+            }
+            try {
+                const userChatRef = doc(db, `artifacts/${app}/users/${userId}/chatHistory`, 'mainChat');
+                const docSnap = await getDoc(userChatRef);
+                const currentMessages = docSnap.exists() ? docSnap.data().messages : [];
+                const newMessages = [...currentMessages, { role, text, timestamp: new Date() }];
+                await setDoc(userChatRef, { messages: newMessages });
+            } catch (error) {
+                console.error("Error saving message:", error);
+            }
+        }
+        
+        // Audio context initialization
+        const audioStartButton = document.getElementById('audioStartButton');
+        const audioStartContainer = document.getElementById('audioStartContainer');
+        const chatUiContainer = document.getElementById('chatUiContainer');
+        let audioContextStarted = false;
+
+        audioStartButton.addEventListener('click', async () => {
+            if (!audioContextStarted) {
+                await Tone.start();
+                console.log('AudioContext started');
+                audioContextStarted = true;
+                audioStartContainer.style.opacity = '0';
+                setTimeout(() => {
+                    audioStartContainer.style.display = 'none';
+                    chatUiContainer.classList.remove('hidden');
+                }, 500);
+            }
+        });
+
+        // Toggle chat UI visibility
+        const toggleChatButton = document.getElementById('toggleChatButton');
+        const chatContainer = document.getElementById('chatUiContainer');
+        toggleChatButton.addEventListener('click', () => {
+            chatContainer.classList.toggle('hidden');
+            const icon = toggleChatButton.querySelector('i');
+            if (chatContainer.classList.contains('hidden')) {
+                icon.classList.remove('fa-chevron-right');
+                icon.classList.add('fa-chevron-left');
+            } else {
+                icon.classList.remove('fa-chevron-left');
+                icon.classList.add('fa-chevron-right');
+            }
+        });
+
+        // Speech recognition setup
+        const micButton = document.getElementById('micButton');
+        const listeningIndicator = document.getElementById('listeningIndicator');
+        let recognition;
+        let isRecognizing = false;
+
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isRecognizing = true;
+                micButton.classList.add('bg-red-800');
+                listeningIndicator.textContent = 'Listening...';
+                playAction(animationNames.listening, THREE.LoopRepeat);
+            };
+
+            recognition.onend = () => {
+                isRecognizing = false;
+                micButton.classList.remove('bg-red-800');
+                listeningIndicator.textContent = '';
+                if (!isSpeaking) {
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                }
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                if (transcript) {
+                    processUserMessage(transcript);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                isRecognizing = false;
+                micButton.classList.remove('bg-red-800');
+                listeningIndicator.textContent = '';
+                if (!isSpeaking) {
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                }
+            };
+        } else {
+            micButton.disabled = true;
+            console.warn('Web Speech API is not supported in this browser.');
+        }
+
+        micButton.addEventListener('click', () => {
+            if (isRecognizing) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+        });
+
+        // Chat functionality
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        const messageStream = document.getElementById('messageStream');
+
+        userInput.addEventListener('input', () => {
+            sendButton.disabled = userInput.value.trim() === '';
+        });
+
+        sendButton.addEventListener('click', () => {
+            const message = userInput.value.trim();
+            if (message) {
+                processUserMessage(message);
+                userInput.value = '';
+                sendButton.disabled = true;
+            }
+        });
+
+        userInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter' && !sendButton.disabled) {
+                sendButton.click();
+            }
+        });
+
+        function displayMessage(role, text) {
+            const messageBubble = document.createElement('div');
+            messageBubble.className = `message-bubble ${role === 'user' ? 'user-message' : 'ai-message'} shadow-md`;
+            messageBubble.textContent = text;
+            messageStream.appendChild(messageBubble);
+            messageStream.scrollTop = messageStream.scrollHeight;
+        }
+
+        // Exponential backoff for API calls
+        async function fetchWithBackoff(url, options, retries = 3, delay = 1000) {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                if (retries > 0) {
+                    console.warn(`Fetch failed. Retrying in ${delay / 1000}s...`);
+                    await new Promise(res => setTimeout(res, delay));
+                    return fetchWithBackoff(url, options, retries - 1, delay * 2);
+                } else {
+                    console.error('Max retries reached. Failing.');
+                    throw error;
                 }
             }
         }
         
-        function onMouseMove(event) {
-            // Update mouse coordinates for mouse-look
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
-        }
-
-        // --- Avatar Interactions ---
-        function handleAvatarClick() {
-            if (isGreeting) return;
-            startGreetingSequence();
-        }
-
-        function handleGroundClick(point) {
-            if (isSpeaking || isMoving) return;
+        async function processUserMessage(prompt) {
+            displayMessage('user', prompt);
+            await saveMessage('user', prompt);
             
-            // Set the target position and start the movement
-            avatar.userData.targetPosition = new THREE.Vector3(point.x, avatar.position.y, point.z);
-            isMoving = true;
-            playAction(animationNames.walk, THREE.LoopRepeat);
+            // Disable input and buttons
+            userInput.disabled = true;
+            sendButton.disabled = true;
+            micButton.disabled = true;
+
+            playAction(animationNames.thinking, THREE.LoopRepeat);
+            
+            try {
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                
+                const chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                
+                const payload = {
+                    contents: chatHistory,
+                };
+                
+                const response = await fetchWithBackoff(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.candidates && response.candidates.length > 0 &&
+                    response.candidates[0].content && response.candidates[0].content.parts &&
+                    response.candidates[0].content.parts.length > 0) {
+                    const aiResponseText = response.candidates[0].content.parts[0].text;
+                    displayMessage('assistant', aiResponseText);
+                    await saveMessage('assistant', aiResponseText);
+                    await textToSpeech(aiResponseText);
+                    
+                } else {
+                    displayMessage('assistant', "I'm sorry, I couldn't generate a response. Please try again.");
+                }
+
+            } catch (error) {
+                console.error('Error fetching from Gemini API:', error);
+                displayMessage('assistant', "I'm sorry, I encountered an error. Please try again.");
+            } finally {
+                userInput.disabled = false;
+                micButton.disabled = false;
+                sendButton.disabled = userInput.value.trim() === '';
+            }
         }
-        
-        // --- Animation & State Management ---
-        function playAction(name, loopMode = THREE.LoopRepeat) {
-            if (!actions[name]) {
-                console.warn(`Animation '${name}' not found.`);
+
+        async function textToSpeech(text) {
+            if (!audioContextStarted) {
+                console.error("Audio context not started. Cannot play speech.");
                 return;
             }
 
-            // Stop dance music if a new action is triggered while dancing
-            if (currentAction && currentAction.getClip().name === animationNames.dance) {
-                stopDanceMusic();
-            }
+            isSpeaking = true;
+            playAction(animationNames.talking, THREE.LoopRepeat);
 
-            const newAction = actions[name];
-            
-            if (currentAction === newAction) {
-                return;
-            }
+            try {
+                const payload = {
+                    contents: [{
+                        parts: [{ text: text }]
+                    }],
+                    generationConfig: {
+                        responseModalities: ["AUDIO"],
+                        speechConfig: {
+                            voiceConfig: {
+                                prebuiltVoiceConfig: { voiceName: "Kore" }
+                            }
+                        }
+                    },
+                    model: "gemini-2.5-flash-preview-tts"
+                };
 
-            newAction.reset();
-            newAction.loop = loopMode;
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+                const response = await fetchWithBackoff(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = response;
+                const part = result?.candidates?.[0]?.content?.parts?.[0];
+                const audioData = part?.inlineData?.data;
+                const mimeType = part?.inlineData?.mimeType;
 
-            if (currentAction) {
-                currentAction.fadeOut(0.3);
-            }
-            
-            newAction.fadeIn(0.3).play();
-            currentAction = newAction;
-        }
+                if (audioData && mimeType && mimeType.startsWith("audio/")) {
+                    const sampleRate = parseInt(mimeType.match(/rate=(\d+)/)[1], 10);
+                    const pcmData = base64ToArrayBuffer(audioData);
+                    const pcm16 = new Int16Array(pcmData);
+                    const wavBlob = pcmToWav(pcm16, sampleRate);
+                    const audioUrl = URL.createObjectURL(wavBlob);
+                    
+                    const audio = new Audio(audioUrl);
+                    audio.onended = () => {
+                        isSpeaking = false;
+                        playAction(animationNames.idle2, THREE.LoopRepeat);
+                        lastInteractionTime = Date.now();
+                        URL.revokeObjectURL(audioUrl); // Clean up the URL
+                    };
+                    await audio.play();
+                } else {
+                    console.error("Audio data is missing or in an unexpected format.");
+                    isSpeaking = false;
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                }
 
-        // Resets the idle timer and sets avatar to center, facing camera
-        function reactToInteraction() {
-            lastInteractionTime = Date.now();
-            isPatrolling = false;
-            
-            // Immediately face camera
-            const cameraPosition = new THREE.Vector3();
-            camera.getWorldPosition(cameraPosition);
-            
-            const direction = new THREE.Vector3().subVectors(cameraPosition, avatar.position).normalize();
-            direction.y = 0; // Keep on the ground plane
-            const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(
-                new THREE.Vector3(0, 0, 1), 
-                direction
-            );
-            
-            avatar.quaternion.slerp(targetQuaternion, 1);
-            
-            if (!isMoving && !isSpeaking && !isThinking && !isListening) {
+            } catch (error) {
+                console.error('Error generating or playing TTS:', error);
+                isSpeaking = false;
                 playAction(animationNames.idle2, THREE.LoopRepeat);
             }
         }
         
-        function startGreetingSequence() {
-            if (isGreeting) return;
-            isGreeting = true;
-            
-            const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-            
-            playAction(animationNames.wave, THREE.LoopOnce);
-            
-            // Use a timeout to ensure the wave animation starts before speech
-            setTimeout(() => {
-                speakText(randomGreeting.initial, () => {
-                    playAction(animationNames.talk, THREE.LoopRepeat);
-                    speakText(randomGreeting.followUp, () => {
-                        playAction(animationNames.idle2, THREE.LoopRepeat);
-                        isGreeting = false;
-                    });
-                });
-            }, 1000);
-        }
-
-        // Appends a new message to the chat display
-        function appendMessage(role, text) {
-            const messageEl = document.createElement('div');
-            messageEl.classList.add('message-bubble', 'mb-2', 'p-3', 'rounded-xl', 'shadow-md');
-
-            if (role === 'user') {
-                messageEl.classList.add('user-message', 'ml-auto');
-            } else {
-                messageEl.classList.add('ai-message', 'mr-auto');
-            }
-            messageEl.textContent = text;
-            chatMessages.appendChild(messageEl);
-            chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll to the bottom
-        }
-
-        // Handles sending a message via text input or voice
-        async function sendMessage(message) {
-            if (!message.trim()) return;
-
-            // Check for explicit "dance" command
-            if (message.toLowerCase().includes('dance')) {
-                appendMessage('user', message);
-                appendMessage('AI', "Let's dance!");
-                playAction(animationNames.dance, THREE.LoopOnce);
-                playDanceMusic();
-                chatInput.value = '';
-                reactToInteraction();
-                return;
-            }
-
-            appendMessage('user', message);
-            chatInput.value = '';
-            
-            isThinking = true;
-            playAction(animationNames.thinking, THREE.LoopRepeat);
-            reactToInteraction();
-
-            const prompt = `You are a helpful and friendly AI avatar. Respond to the following user message: ${message}`;
-            const payload = {
-                contents: [{ role: 'user', parts: [{ text: prompt }] }]
-            };
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-            let retries = 0;
-            const maxRetries = 5;
-            const baseDelay = 1000;
-
-            while (retries < maxRetries) {
-                try {
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (!response.ok) {
-                        if (response.status === 429) { // Too Many Requests
-                            const delay = Math.pow(2, retries) * baseDelay;
-                            retries++;
-                            await new Promise(resolve => setTimeout(resolve, delay));
-                            continue;
-                        }
-                        throw new Error(`API call failed with status: ${response.status}`);
-                    }
-
-                    const result = await response.json();
-                    const aiReply = result?.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't generate a response.";
-                    isThinking = false;
-                    appendMessage('AI', aiReply);
-                    speakText(aiReply);
-                    break;
-                } catch (error) {
-                    console.error("Error fetching AI response:", error);
-                    isThinking = false;
-                    playErrorAnimation();
-                    appendMessage('AI', "I'm having trouble connecting right now. Please try again later.");
-                    break;
-                }
-            }
-            if (retries === maxRetries) {
-                console.error("Max retries exceeded for API call.");
-                isThinking = false;
-                playErrorAnimation();
-                appendMessage('AI', "I'm sorry, I'm unable to connect at the moment.");
-            }
-        }
-        
-        function playErrorAnimation() {
-            if (!isSpeaking) {
-                playAction(animationNames.shake, THREE.LoopOnce);
-                setTimeout(() => {
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
-                }, 2000);
-            }
-        }
-
-        // Converts PCM audio to WAV format for playback
-        function pcmToWav(pcmData, sampleRate) {
-            const numChannels = 1;
-            const bytesPerSample = 2; // 16-bit PCM
-            const buffer = new ArrayBuffer(44 + pcmData.length * bytesPerSample);
-            const view = new DataView(buffer);
-            // RIFF chunk descriptor
-            writeString(view, 0, 'RIFF');
-            view.setUint32(4, 36 + pcmData.length * bytesPerSample, true);
-            writeString(view, 8, 'WAVE');
-            // FMT chunk
-            writeString(view, 12, 'fmt ');
-            view.setUint32(16, 16, true);
-            view.setUint16(20, 1, true); // PCM format
-            view.setUint16(22, numChannels, true);
-            view.setUint32(24, sampleRate, true);
-            view.setUint32(28, sampleRate * numChannels * bytesPerSample, true);
-            view.setUint16(32, numChannels * bytesPerSample, true);
-            view.setUint16(34, bytesPerSample * 8, true);
-            // DATA chunk
-            writeString(view, 36, 'data');
-            view.setUint32(40, pcmData.length * bytesPerSample, true);
-            // Write PCM data
-            let offset = 44;
-            for (let i = 0; i < pcmData.length; i++) {
-                view.setInt16(offset, pcmData[i], true);
-                offset += bytesPerSample;
-            }
-            return new Blob([view], { type: 'audio/wav' });
-            function writeString(view, offset, str) {
-                for (let i = 0; i < str.length; i++) {
-                    view.setUint8(offset + i, str.charCodeAt(i));
-                }
-            }
-        }
-
-        // Converts a base64 string to an ArrayBuffer
+        // Helper functions for audio conversion
         function base64ToArrayBuffer(base64) {
             const binaryString = window.atob(base64);
             const len = binaryString.length;
@@ -595,285 +535,247 @@
             return bytes.buffer;
         }
 
-        // Generates and plays audio using the Gemini TTS API
-        async function speakText(text, onEndedCallback) {
-            return new Promise(async (resolve, reject) => {
-                isSpeaking = true;
-                
-                const payload = {
-                    contents: [{
-                        parts: [{ text: text }]
-                    }],
-                    generationConfig: {
-                        responseModalities: ["AUDIO"],
-                        speechConfig: {
-                            voiceConfig: {
-                                prebuiltVoiceConfig: { voiceName: "Fenrir" }
-                            }
-                        }
-                    },
-                    model: "gemini-2.5-flash-preview-tts"
-                };
+        function pcmToWav(pcmData, sampleRate) {
+            const numChannels = 1;
+            const bytesPerSample = 2; // 16-bit PCM
+            const headerLength = 44;
+            const dataLength = pcmData.length * bytesPerSample;
+            const buffer = new ArrayBuffer(headerLength + dataLength);
+            const view = new DataView(buffer);
+            let offset = 0;
 
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+            // RIFF header
+            writeString(view, offset, 'RIFF'); offset += 4;
+            view.setUint32(offset, 36 + dataLength, true); offset += 4;
+            writeString(view, offset, 'WAVE'); offset += 4;
 
-                let retries = 0;
-                const maxRetries = 5;
-                const baseDelay = 1000;
+            // fmt chunk
+            writeString(view, offset, 'fmt '); offset += 4;
+            view.setUint32(offset, 16, true); offset += 4; // Chunk size
+            view.setUint16(offset, 1, true); offset += 2; // Audio format (1 for PCM)
+            view.setUint16(offset, numChannels, true); offset += 2;
+            view.setUint32(offset, sampleRate, true); offset += 4;
+            view.setUint32(offset, sampleRate * numChannels * bytesPerSample, true); offset += 4; // Byte rate
+            view.setUint16(offset, numChannels * bytesPerSample, true); offset += 2; // Block align
+            view.setUint16(offset, 16, true); offset += 2; // Bits per sample
 
-                while (retries < maxRetries) {
-                    try {
-                        const response = await fetch(apiUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-
-                        if (!response.ok) {
-                            if (response.status === 429) { // Too Many Requests
-                                const delay = Math.pow(2, retries) * baseDelay;
-                                retries++;
-                                await new Promise(resolve => setTimeout(resolve, delay));
-                                continue;
-                            }
-                            throw new Error(`API call failed with status: ${response.status}`);
-                        }
-
-                        const result = await response.json();
-                        const audioData = result?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-                        const mimeType = result?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType;
-
-                        if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
-                            const sampleRate = 16000; // API returns 16kHz PCM
-                            const pcmData = new Int16Array(base64ToArrayBuffer(audioData));
-                            const wavBlob = pcmToWav(pcmData, sampleRate);
-                            const audioUrl = URL.createObjectURL(wavBlob);
-
-                            const audio = new Audio(audioUrl);
-                            audio.play();
-
-                            audio.onended = () => {
-                                isSpeaking = false;
-                                URL.revokeObjectURL(audioUrl);
-                                if (onEndedCallback) {
-                                    onEndedCallback();
-                                }
-                                resolve();
-                            };
-                        } else {
-                            throw new Error("Invalid audio data from API");
-                        }
-                        break;
-                    } catch (error) {
-                        console.error("Error generating TTS audio:", error);
-                        isSpeaking = false;
-                        playErrorAnimation();
-                        reject(error);
-                        break;
-                    }
-                }
-                if (retries === maxRetries) {
-                    console.error("Max retries exceeded for TTS API call.");
-                    isSpeaking = false;
-                    playErrorAnimation();
-                    reject("Max retries exceeded");
-                }
-            });
-        }
-
-        // --- Tone.js Music Functionality ---
-        async function playDanceMusic() {
-            await Tone.start();
-            if (danceLoop) {
-                danceLoop.stop();
-                danceLoop.dispose();
-            }
-            // Create a simple drum and bass loop
-            const drum = new Tone.MembraneSynth().toDestination();
-            const bass = new Tone.Synth({
-                oscillator: { type: "square" }
-            }).toDestination();
-            danceLoop = new Tone.Sequence((time, note) => {
-                if (note === 'C1') {
-                    drum.triggerAttackRelease("C1", "8n", time);
-                } else {
-                    bass.triggerAttackRelease(note, "8n", time);
-                }
-            }, ['C1', null, 'C1', null, 'C2', null, 'G1', null, 'C1', null, 'C2', null, 'G1', null, 'C1', null]).start(0);
-            Tone.Transport.start();
-        }
-
-        function stopDanceMusic() {
-            if (danceLoop) {
-                danceLoop.stop();
-                danceLoop.dispose();
-                danceLoop = null;
-            }
-            if (Tone.Transport.state === 'started') {
-                Tone.Transport.stop();
-            }
-        }
-        
-        // --- Speech Recognition ---
-        let recognition;
-        
-        if ('webkitSpeechRecognition' in window) {
-            recognition = new webkitSpeechRecognition();
-            recognition.lang = "en-US";
-            recognition.continuous = false;
-            recognition.interimResults = false;
-
-            recognition.onstart = function() {
-                isListening = true;
-                micButton.classList.add('active');
-            };
-
-            recognition.onresult = function(event) {
-                const transcript = event.results[0][0].transcript;
-                chatInput.value = transcript;
-                sendMessage(transcript);
-            };
-
-            recognition.onend = function() {
-                isListening = false;
-                micButton.classList.remove('active');
-                if (!isSpeaking && !isMoving && !isThinking) {
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
-                }
-            };
-
-            recognition.onerror = function(event) {
-                console.error('Speech recognition error:', event.error);
-                isListening = false;
-                micButton.classList.remove('active');
-                if (!isSpeaking && !isMoving && !isThinking) {
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
-                }
-            };
-        } else {
-            console.warn("Speech Recognition API not supported in this browser.");
-            micButton.disabled = true;
-        }
-        
-        // --- Microphone Button Click Handler with TTS ---
-        micButton.addEventListener("click", async () => {
-            reactToInteraction();
-            if (!recognition) return;
-            chatInput.value = "";
+            // data chunk
+            writeString(view, offset, 'data'); offset += 4;
+            view.setUint32(offset, dataLength, true); offset += 4;
             
-            if (isListening) {
-                recognition.stop();
-            } else {
-                playAction(animationNames.talk, THREE.LoopRepeat);
-                await speakText("Go ahead, I'm listening.");
-                
-                playAction(animationNames.listening, THREE.LoopRepeat);
-                recognition.start();
+            // Write PCM data
+            for (let i = 0; i < pcmData.length; i++) {
+                view.setInt16(offset, pcmData[i], true);
+                offset += bytesPerSample;
             }
-        });
+
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+        // Three.js setup
+        const animationNames = {
+            idle1: "Idle",
+            idle2: "Idle_2",
+            talking: "Talking",
+            thinking: "Thinking",
+            listening: "Listening",
+            wave: "Wave",
+            point: "Point_gesture",
+            walk: "Walk"
+        };
+        const clock = new THREE.Clock();
+
+        window.onload = function() {
+            initThreeJS();
+            loadAvatar();
+            animate();
+        };
+
+        function initThreeJS() {
+            // Set up the scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111827);
+
+            // Set up the camera
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.6, 2.5);
+            camera.lookAt(0, 1.2, 0);
+
+            // Set up the renderer
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            // Add lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(2, 3, 1.5);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 50;
+            scene.add(directionalLight);
+
+            // Add a simple ground plane
+            const planeGeometry = new THREE.PlaneGeometry(10, 10);
+            const planeMaterial = new THREE.MeshStandardMaterial({ color: 0x1F2937, side: THREE.DoubleSide });
+            const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane.rotation.x = Math.PI / 2;
+            plane.position.y = 0;
+            plane.receiveShadow = true;
+            scene.add(plane);
+
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('click', onCanvasClick);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function loadAvatar() {
+            const loader = new THREE.GLTFLoader();
+            loader.load(
+                'https://cdn.glitch.global/c6d573d8-57e7-4b47-a8a2-f67e16d44547/Avatar_with_animations_2.gltf?v=1717618956976',
+                (gltf) => {
+                    avatar = gltf.scene;
+                    avatar.scale.set(1.5, 1.5, 1.5);
+                    avatar.position.y = 0.01;
+                    avatar.rotation.y = Math.PI; // Rotate to face the camera
+                    avatar.traverse((object) => {
+                        if (object.isMesh) {
+                            object.castShadow = true;
+                            object.receiveShadow = true;
+                        }
+                    });
+
+                    // Find the jaw bone for speaking animation
+                    jawBone = avatar.getObjectByName('mixamorigJaw');
+
+                    scene.add(avatar);
+
+                    mixer = new THREE.AnimationMixer(avatar);
+                    gltf.animations.forEach((clip) => {
+                        animations[clip.name] = mixer.clipAction(clip);
+                    });
+
+                    // Initial animation
+                    playAction(animationNames.idle2, THREE.LoopRepeat);
+                },
+                undefined,
+                (error) => {
+                    console.error('An error occurred loading the avatar:', error);
+                }
+            );
+        }
+
+        function playAction(name, loopMode = THREE.LoopRepeat) {
+            if (!animations[name]) {
+                console.warn(`Animation "${name}" not found.`);
+                return;
+            }
+
+            const newAction = animations[name];
+            if (activeAction === newAction) return;
+
+            if (activeAction) {
+                newAction.reset();
+                newAction.setEffectiveWeight(1.0);
+                newAction.crossFadeFrom(activeAction, 0.5, true);
+                newAction.play();
+            } else {
+                newAction.play();
+            }
+
+            activeAction = newAction;
+            activeAction.setLoop(loopMode);
+        }
         
-        // Event listener for the new dance button
-        danceButton.addEventListener('click', () => {
-            reactToInteraction();
-            if (currentAction && currentAction.getClip().name === animationNames.dance) {
-                playAction(animationNames.idle2, THREE.LoopRepeat);
-                stopDanceMusic();
-            } else {
-                playAction(animationNames.dance, THREE.LoopOnce);
-                playDanceMusic();
+        function onCanvasClick(event) {
+            const mouse = new THREE.Vector2();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+
+            // Find intersection with the ground plane
+            const plane = scene.children.find(o => o.geometry.type === 'PlaneGeometry');
+            const intersects = raycaster.intersectObject(plane);
+
+            if (intersects.length > 0) {
+                const targetPosition = intersects[0].point;
+                targetPosition.y = avatar.position.y;
+                moveAvatarTo(targetPosition);
             }
-        });
+        }
 
-        // Event listeners for text input and send button
-        chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                sendMessage(chatInput.value);
-            }
-        });
+        function moveAvatarTo(targetPosition) {
+            if (!avatar) return;
 
-        sendButton.addEventListener('click', () => {
-            sendMessage(chatInput.value);
-        });
+            const directionVector = new THREE.Vector3().subVectors(targetPosition, avatar.position);
+            const distance = directionVector.length();
 
-        // Main animation loop
+            if (distance < 0.05) return; // Don't move if too close
+
+            isMoving = true;
+            
+            // Calculate direction and quaternion for rotation
+            const targetDirection = directionVector.clone().normalize();
+            const currentDirection = new THREE.Vector3().setFromMatrixColumn(avatar.matrix, 0); // X-axis
+            const angle = Math.atan2(
+                targetDirection.x * currentDirection.z - targetDirection.z * currentDirection.x,
+                targetDirection.x * currentDirection.x + targetDirection.z * currentDirection.z
+            );
+            
+            // Set up turning animation
+            isTurning = true;
+            turnStartTime = Date.now();
+            const targetQuaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle).multiply(avatar.quaternion);
+            
+            // Play walking animation
+            playAction(animationNames.walk, THREE.LoopRepeat);
+        }
+
+
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
-            if (mixer) mixer.update(delta);
+            const time = clock.getElapsedTime();
 
-            // Animate jaw for talking
-            if (jawBone && isSpeaking) {
-                const jawRotation = Math.sin(clock.getElapsedTime() * 10) * 0.05;
+            // Jaw animation for talking
+            if (isSpeaking && jawBone) {
+                const jawRotation = Math.sin(time * 10) * 0.05 + 0.02; // Increased frequency for more dynamic talking
                 jawBone.rotation.x = -jawRotation;
             } else if (jawBone) {
                 jawBone.rotation.x = 0;
             }
             
-            // Mouse-look functionality
-            if (headBone && !isSpeaking && !isMoving && !isListening && !isThinking) {
-                const headDirection = new THREE.Vector3().setFromMatrixPosition(headBone.matrixWorld).sub(camera.position).normalize();
-                
-                const targetRotation = new THREE.Quaternion().setFromUnitVectors(
-                    new THREE.Vector3(0, 0, 1), 
-                    headDirection
-                );
-                
-                headBone.quaternion.slerp(targetRotation, 0.1);
-            }
+            // Avatar movement logic
+            if (isMoving) {
+                const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
 
-            // Patrol behavior after a period of inactivity
-            if (!isSpeaking && !isMoving && !isThinking && !isGreeting && (Date.now() - lastInteractionTime) > patrolTimeout) {
-                if (!isPatrolling) {
-                    isPatrolling = true;
-                    lastPatrolTime = Date.now();
-                }
-
-                if ((Date.now() - lastPatrolTime) > patrolWaitTime) {
-                    lastPatrolTime = Date.now();
-                    const targetPosition = new THREE.Vector3(
-                        (Math.random() - 0.5) * 4,
-                        0,
-                        (Math.random() - 0.5) * 4
-                    );
-                    avatar.userData.targetPosition = targetPosition;
-                    isMoving = true;
-                    playAction(animationNames.walk, THREE.LoopRepeat);
-                }
-            } else if (!isSpeaking && !isMoving && !isThinking && !isGreeting && (Date.now() - lastInteractionTime) > idleTimeout) {
-                // Passive idle after 10 seconds of inactivity
-                if (currentAction.getClip().name !== animationNames.idle) {
-                    playAction(animationNames.idle, THREE.LoopRepeat);
-                }
-            } else if (!isSpeaking && !isMoving && !isThinking && !isGreeting && (currentAction && currentAction.getClip().name !== animationNames.idle2)) {
-                 // Active idle
-                 playAction(animationNames.idle2, THREE.LoopRepeat);
-            }
-            
-            // Refactored movement logic
-            if (isMoving && avatar.userData.targetPosition) {
-                const targetPosition = avatar.userData.targetPosition;
-                const distance = avatar.position.distanceTo(targetPosition);
-                
-                if (distance > 0.1) {
-                    const direction = new THREE.Vector3().subVectors(targetPosition, avatar.position).normalize();
-                    const speed = 0.01;
-                    avatar.position.addScaledVector(direction, speed);
-                    
-                    // Smooth rotation towards the target
-                    const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(
-                        new THREE.Vector3(0, 0, 1), 
-                        direction
-                    );
-                    avatar.quaternion.slerp(targetQuaternion, 0.05);
-                } else {
-                    isMoving = false;
-                    playAction(animationNames.idle2, THREE.LoopRepeat);
-                    reactToInteraction();
-                }
-            }
-            
-            renderer.render(scene, camera);
-        }
-    </script>
-</body>
-</html>
+                if (distance > 0.05) {
+                    if (isTurning) {
+                        const elapsedTime = Date.now() - turnStartTime;
+                        const turnProgress = Math.min(elapsedTime / turnDuration, 1);
+                        // Rotate towards the target quaternion
+                        avatar.quaternion.slerp(targetQuaternion, turnProgress);
+                        if (turnProgress >= 1) {
+                            isTurning = false;
+                        }
+                    } else {
+                        // Move forward
