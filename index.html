@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI-AVATAR</title>
 
+    <!-- Tailwind CSS and Font Awesome are retained from the original file -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <style>
+        /* All original styles for the body, canvas, and chat UI are preserved here */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
         body {
             font-family: 'Inter', sans-serif;
@@ -172,16 +174,22 @@
             text-align: center;
         }
     </style>
+    <!-- New and corrected library imports for a robust setup -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js" type="module"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 </head>
 <body>
+    <!-- Loading Screen -->
     <div id="loading-screen" class="loading-screen">
         <div class="spinner mb-4"></div>
         <p id="loading-text" class="text-xl">Loading... 0%</p>
     </div>
+
+    <!-- 3D Canvas -->
     <canvas id="avatar-canvas"></canvas>
+
+    <!-- Original Chat UI -->
     <div id="chat-ui-container" class="chat-ui-container">
         <h1 class="text-white text-2xl font-bold mb-4">AI Avatar Chat</h1>
         <div id="chat-history" class="chat-history"></div>
@@ -200,6 +208,8 @@
             <i class="fas fa-music"></i>
         </button>
     </div>
+    
+    <!-- Modal for messages -->
     <div id="message-modal" class="modal">
         <div class="modal-content">
             <p id="modal-message" class="mb-4"></p>
@@ -208,16 +218,18 @@
             </div>
         </div>
     </div>
+
     <script type="module">
+        // Import GLTFLoader as a module, as it's the most reliable method
         import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
-        import { Tone } from 'https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js';
-        
+
         // Global variables and constants
         const avatarUrl = 'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
         const GEMINI_API_KEY = "AIzaSyCWaPLRukI_Rhb8vB29vVjEk5GEuopXnA4";
         const GEMINI_FLASH_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
         const GEMINI_TTS_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${GEMINI_API_KEY}`;
         
+        // State variables
         let scene, camera, renderer, avatar, mixer;
         let animations = {};
         let currentAction;
@@ -231,11 +243,12 @@
         let isPatrolling = false;
         let lastInteractionTime = Date.now();
         
+        // Idle and Patrol timings from user requirements
         const passiveIdleTimeout = 10000;
         const patrolTimeout = 30000;
         const patrolWaitTime = 10000;
         
-        let patrolTimer, idleTimer;
+        let patrolTimer;
         let mouse = new THREE.Vector2();
         let raycaster = new THREE.Raycaster();
         let speechRecognition;
@@ -245,6 +258,7 @@
         let synth = new Tone.PolySynth().toDestination();
         let danceLoop;
 
+        // UI elements
         const loadingScreen = document.getElementById('loading-screen');
         const loadingText = document.getElementById('loading-text');
         const chatHistoryEl = document.getElementById('chat-history');
@@ -256,6 +270,7 @@
         const modalMessage = document.getElementById('modal-message');
         const modalClose = document.getElementById('modal-close');
         
+        // Greetings from user requirements
         const greetings = [
             { initial: "Hello there!", followUp: "What can I do for you?" },
             { initial: "Hi!", followUp: "How can I help?" },
@@ -263,6 +278,7 @@
             { initial: "Greetings!", followUp: "Feel free to ask me anything." }
         ];
 
+        // --- Core UI & Helpers ---
         function showModal(message) {
             modalMessage.textContent = message;
             modal.style.display = 'flex';
@@ -278,6 +294,7 @@
             chatHistoryEl.prepend(messageElement);
         }
 
+        // Web Speech Recognition setup
         if ('webkitSpeechRecognition' in window) {
             speechRecognition = new webkitSpeechRecognition();
             speechRecognition.continuous = false;
@@ -287,6 +304,7 @@
             speechRecognition.onstart = () => {
                 isListening = true;
                 micButton.classList.add('pulse');
+                // The user requested a specific "listening" animation
                 playAction('listening', THREE.LoopRepeat);
                 console.log("Listening...");
             };
@@ -318,6 +336,7 @@
             micButton.style.display = 'none';
         }
 
+        // --- 3D Scene Initialization and Rendering ---
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x111827);
@@ -378,18 +397,20 @@
                 scene.add(avatar);
                 mixer = new THREE.AnimationMixer(avatar);
                 
-                animations['idle2'] = gltf.animations.find(clip => clip.name === 'Idle');
-                animations['idle'] = gltf.animations.find(clip => clip.name === 'Idle');
+                // Mapping the glTF animations to the user's requested names
+                animations['idle2'] = gltf.animations.find(clip => clip.name === 'Idle'); // Active idle
+                animations['idle'] = gltf.animations.find(clip => clip.name === 'Idle'); // Passive idle (using same clip, as per previous code)
                 animations['walk'] = gltf.animations.find(clip => clip.name === 'Walking');
                 animations['dance'] = gltf.animations.find(clip => clip.name === 'Dance');
                 animations['wave'] = gltf.animations.find(clip => clip.name === 'Waving');
                 animations['talk'] = gltf.animations.find(clip => clip.name === 'Talking');
                 animations['think'] = gltf.animations.find(clip => clip.name === 'Thinking');
-                animations['shake'] = gltf.animations.find(clip => clip.name === 'Excited');
-                animations['listening'] = gltf.animations.find(clip => clip.name === 'Listening');
+                animations['shake'] = gltf.animations.find(clip => clip.name === 'Excited'); // Using Excited for shake
+                // The model does not have a "listening" animation. We'll use a neutral one as a stand-in.
+                animations['listening'] = gltf.animations.find(clip => clip.name === 'Idle');
 
                 if (!animations['idle2']) {
-                    throw new Error("Could not find 'Idle' animation in the model. Model may be incompatible.");
+                    throw new Error("Could not find 'Idle' animation in the model.");
                 }
 
                 avatar.traverse(o => {
@@ -402,6 +423,7 @@
                 loadingScreen.style.opacity = 0;
                 setTimeout(() => loadingScreen.style.display = 'none', 1000);
                 
+                // "On loading or If you click directly on the avatar or if you click on the chat, it will perform a waving animation"
                 startGreetingSequence();
                 setupInteractions();
                 animate();
@@ -412,9 +434,9 @@
             }
         }
 
+        // Main animation loop
         function animate() {
             requestAnimationFrame(animate);
-
             const delta = clock.getDelta();
             if (mixer) mixer.update(delta);
 
@@ -434,6 +456,7 @@
             renderer.render(scene, camera);
         }
 
+        // --- Animation and Behavior Logic ---
         function updateAvatarMovement(delta) {
             const distance = avatar.position.distanceTo(avatar.userData.targetPosition);
             if (distance > 0.05) {
@@ -449,7 +472,6 @@
                     direction.clone().normalize()
                 );
                 avatar.quaternion.slerp(targetQuaternion, 0.1);
-
             } else {
                 avatar.position.copy(avatar.userData.targetPosition);
                 isMoving = false;
@@ -486,17 +508,10 @@
             currentAction = newAction;
         }
 
-        function stopAllActions() {
-            if (currentAction) {
-                currentAction.stop();
-            }
-        }
-        
         function resetIdleSequence() {
             lastInteractionTime = Date.now();
             isPatrolling = false;
             clearTimeout(patrolTimer);
-            clearTimeout(idleTimer);
             if (!isTalking && !isThinking && !isDancing && !isListening) {
                 playAction('idle2', THREE.LoopRepeat);
             }
@@ -537,9 +552,11 @@
             }
         }
 
+        // --- Interaction Handlers ---
         function reactToInteraction() {
             resetIdleSequence();
             isMoving = false;
+            // "the avatar will appear and face on the front immediately"
             faceCamera();
         }
 
@@ -573,7 +590,8 @@
                 reactToInteraction();
                 handleGreeting();
             });
-
+            
+            // Interaction listeners on buttons
             sendButton.addEventListener('click', () => handleChat(chatInput.value));
             chatInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
@@ -608,8 +626,7 @@
             playAction('walk', THREE.LoopRepeat);
         }
 
-        async function handleGreeting() {
-            reactToInteraction();
+        async function startGreetingSequence() {
             const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
             
             playAction('wave', THREE.LoopOnce);
@@ -617,8 +634,13 @@
 
             playAction('talk', THREE.LoopRepeat);
             await speak(randomGreeting.followUp);
-
+            
             playAction('idle2', THREE.LoopRepeat);
+        }
+
+        function handleGreeting() {
+            reactToInteraction();
+            startGreetingSequence();
         }
 
         function handleMic() {
@@ -627,7 +649,11 @@
                 if (isListening) {
                     speechRecognition.stop();
                 } else {
+                    // "action talk talking" animation will trigger while the avatar talks Go ahead im listening
+                    playAction('talk', THREE.LoopRepeat); 
                     speak("Go ahead, I'm listening.", () => {
+                        // "after trigger "listening" animation"
+                        playAction('listening', THREE.LoopRepeat); 
                         speechRecognition.start();
                     });
                 }
@@ -688,7 +714,7 @@
             try {
                 const ttsPayload = {
                     contents: [{ parts: [{ text: text }] }],
-                    generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } } },
+                    generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Iapetus" } } } },
                     model: "gemini-2.5-flash-preview-tts"
                 };
                 const response = await fetch(GEMINI_TTS_URL, {
@@ -742,6 +768,7 @@
             }
         }
 
+        // --- Dance Mode Logic ---
         function startDanceMusic() {
             if (Tone.context.state !== 'running') {
                 Tone.start();
@@ -785,6 +812,7 @@
             playAction('idle2', THREE.LoopRepeat);
         }
         
+        // --- Audio conversion helpers ---
         function base64ToArrayBuffer(base64) {
             const binaryString = window.atob(base64);
             const len = binaryString.length;
@@ -822,6 +850,7 @@
             return new Blob([view], { type: 'audio/wav' });
         }
 
+        // --- Entry point ---
         window.onload = init;
     </script>
 </body>
